@@ -643,22 +643,7 @@ body.skinned #age-banner { color: var(--brass-hi); }
   background: rgba(40, 32, 18, .8);
 }
 #intro-sound { min-width: 46px; font-size: 16px; }
-#intro-hint {
-  position: absolute;
-  left: 50%; bottom: 22px;
-  transform: translateX(-50%) translateY(8px);
-  background: rgba(20, 16, 10, .72);
-  border: 2px solid var(--brass-hi);
-  color: var(--parch);
-  border-radius: 999px;
-  padding: 9px 20px;
-  font: 700 14px/1 inherit;
-  letter-spacing: .4px;
-  opacity: 0; pointer-events: none;
-  transition: opacity .3s ease, transform .3s ease;
-  backdrop-filter: blur(2px);
-}
-#intro-hint.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
 /* if autoplay-with-sound was blocked, draw the eye to the unmute button */
 #intro-sound.nudge {
   border-color: var(--brass-hi);

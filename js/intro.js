@@ -32,7 +32,6 @@ const Intro = {
     root.id = 'intro';
     root.innerHTML = `
       <video id="intro-video" playsinline preload="auto"></video>
-      <div id="intro-hint">🔊 Click anywhere for sound</div>
       <div id="intro-controls">
         <button id="intro-sound" title="Mute">🔊</button>
         <button id="intro-skip">Skip&nbsp;›</button>
@@ -45,20 +44,18 @@ const Intro = {
     video.volume = 1;
     video.muted = false;
 
-    const hint = root.querySelector('#intro-hint');
     const syncSound = () => {
       soundBtn.textContent = video.muted ? '🔇' : '🔊';
       soundBtn.title = video.muted ? 'Sound on' : 'Mute';
       soundBtn.classList.toggle('nudge', video.muted);
-      hint.classList.toggle('show', video.muted);
     };
 
     /**
      * Browsers only allow unmuted autoplay once the visitor has interacted with
      * the origin, so a first visit gets blocked no matter what we ask for. When
-     * that happens, arm the whole window: the very next click or keypress counts
-     * as the gesture and the sound comes on mid-clip. Clicking the picture no
-     * longer skips, so it is free to mean "turn the sound on".
+     * that happens, arm the whole window silently: the very next click or
+     * keypress counts as the gesture and the sound comes on mid-clip, with no
+     * prompt. Clicking the picture no longer skips, so it is free to do this.
      */
     const armUnmute = () => {
       const on = (e) => {
