@@ -4,12 +4,14 @@
    Plays the clips back to back on a fresh page load, then hands over to the
    start screen. Skipping is deliberate: only the Skip button does it.
 
-   Sound is requested on every clip. Browsers only permit unmuted autoplay once
-   the visitor has interacted with the origin, so a first visit is blocked no
-   matter what is asked for — that is a platform rule, not something the page can
-   opt out of. When it happens the clip still plays, muted, and the next click or
-   keypress anywhere turns the sound on mid-clip. If even muted autoplay is
-   refused the sequence is skipped rather than leaving a frozen frame.
+   It opens on a black click-to-start plate. That is not decoration: browsers
+   refuse to begin audio until the visitor has interacted with the origin, so
+   without a gesture the first visit is always muted. Starting playback from
+   inside the click handler makes that gesture the one that starts the video, so
+   sound is guaranteed from the first frame for everyone.
+
+   The muted fallback below is kept as a belt-and-braces path in case a browser
+   still refuses; it should not normally be reached.
    ========================================================================= */
 'use strict';
 
@@ -32,6 +34,7 @@ const Intro = {
     root.id = 'intro';
     root.innerHTML = `
       <video id="intro-video" playsinline preload="auto"></video>
+      <div id="intro-gate"><span>Click to start game</span></div>
       <div id="intro-controls">
         <button id="intro-sound" title="Mute">🔊</button>
         <button id="intro-skip">Skip&nbsp;›</button>
@@ -107,6 +110,23 @@ const Intro = {
     // not cut the cinematic short — too easy to trigger by accident.
     skipBtn.addEventListener('click', (e) => { e.stopPropagation(); done(); });
 
-    playAt(0);
+    // Start from inside the gesture handler so the browser counts it as user
+    // activation and lets the audio through.
+    const gate = root.querySelector('#intro-gate');
+    const start = (e) => {
+      if (e) e.preventDefault();
+      gate.removeEventListener('click', start);
+      window.removeEventListener('keydown', onGateKey, true);
+      gate.classList.add('gone');
+      setTimeout(() => gate.remove(), 300);
+      root.classList.add('started');
+      playAt(0);
+    };
+    const onGateKey = (e) => {
+      const code = keyCodeOf(e);
+      if (code === 'Enter' || code === 'Space') { e.stopPropagation(); start(e); }
+    };
+    gate.addEventListener('click', start);
+    window.addEventListener('keydown', onGateKey, true);
   },
 };
