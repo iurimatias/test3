@@ -49,34 +49,50 @@
 
   /* ------------------------------------------------------- start-screen art */
 
+  /** A little diorama in the same isometric style as the game itself. */
   function drawStartArt() {
     const cv = document.getElementById('start-art');
     const ctx = cv.getContext('2d');
-    ctx.clearRect(0, 0, cv.width, cv.height);
 
-    // ground line
-    ctx.strokeStyle = 'rgba(80,74,58,0.5)';
-    ctx.lineWidth = 1.6;
+    ctx.fillStyle = '#7cae3e';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    for (let i = 0; i < 26; i++) {
+      ctx.beginPath();
+      ctx.ellipse(hashNoise(i, 3) * cv.width, hashNoise(i, 9) * cv.height,
+        30 + hashNoise(i, 1) * 70, 18 + hashNoise(i, 5) * 34, 0, 0, TAU);
+      ctx.fill();
+    }
+    // a dirt track running across the diorama
+    ctx.strokeStyle = '#cdb079';
+    ctx.lineWidth = 22;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    for (let x = 10; x < cv.width - 10; x += 24) skLine(ctx, x, 112, x + 24, 112, x, 1.2);
+    ctx.moveTo(-10, 112);
+    ctx.quadraticCurveTo(cv.width * 0.4, 96, cv.width + 10, 118);
     ctx.stroke();
 
-    const mk = (type, x, facing) => ({
-      def: UNIT_DEFS[type], type, x, y: 112, facing: facing || 0,
+    // Draw at the units' own world scale — each entity places itself via iso,
+    // so nudge the canvas origin instead of faking positions.
+    const mk = (type, facing) => ({
+      def: UNIT_DEFS[type], type, x: 0, y: 0, facing: facing || 0,
       hitFlash: 0, swing: 0, path: null, walkPhase: 0, anim: 0,
       state: 'idle', carry: { type: null, amount: 0 }, radius: 8,
     });
+    const at = (x, y, fn) => { ctx.save(); ctx.translate(x, y); fn(); ctx.restore(); };
 
-    // a small blue line-up facing a red one
-    const blues = [['villager', 62], ['militia', 108], ['archer', 152], ['spearman', 196], ['knight', 248]];
-    for (const [t, x] of blues) drawUnit(ctx, mk(t, x, 0), PLAYER_COLORS[0]);
-    const reds = [['champion', 330], ['crossbowman', 380], ['paladin', 442]];
-    for (const [t, x] of reds) drawUnit(ctx, mk(t, x, Math.PI), PLAYER_COLORS[1]);
+    at(40, 116, () => drawResource(ctx, { x: 0, y: 0, seed: 7, type: 'tree', amount: 1, maxAmount: 1 }, 0));
+    at(74, 134, () => drawResource(ctx, { x: 0, y: 0, seed: 21, type: 'tree', amount: 1, maxAmount: 1 }, 0));
+    at(520, 120, () => drawResource(ctx, { x: 0, y: 0, seed: 11, type: 'gold', amount: 1, maxAmount: 1 }, 0));
+    at(300, 138, () => drawResource(ctx, { x: 0, y: 0, seed: 3, type: 'bush', amount: 1, maxAmount: 1 }, 0));
 
-    // a tree and a house for flavour
-    drawResource(ctx, { x: 22, y: 110, seed: 7, type: 'tree', amount: 1, maxAmount: 1 }, 0);
-    drawResource(ctx, { x: 292, y: 112, seed: 3, type: 'bush', amount: 1, maxAmount: 1 }, 0);
-    drawResource(ctx, { x: 494, y: 110, seed: 11, type: 'gold', amount: 1, maxAmount: 1 }, 0);
+    const blues = [['villager', 132], ['militia', 176], ['archer', 216], ['spearman', 256]];
+    for (const [t, x] of blues) at(x, 126, () => drawUnit(ctx, mk(t, 0), PLAYER_COLORS[0]));
+    at(340, 132, () => drawUnit(ctx, mk('knight', 0), PLAYER_COLORS[0]));
+
+    const reds = [['champion', 420], ['crossbowman', 462]];
+    for (const [t, x] of reds) at(x, 124, () => drawUnit(ctx, mk(t, Math.PI), PLAYER_COLORS[1]));
+    at(490, 138, () => drawUnit(ctx, mk('paladin', Math.PI), PLAYER_COLORS[1]));
   }
 
   /* ------------------------------------------------------------- main loop */

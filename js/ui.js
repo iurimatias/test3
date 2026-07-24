@@ -23,7 +23,7 @@ function makeUnitIcon(type, colorIdx) {
   const key = `u:${type}:${colorIdx}`;
   if (ICON_CACHE[key]) return ICON_CACHE[key];
   const cv = document.createElement('canvas');
-  const S = 48;
+  const S = 64;
   cv.width = S; cv.height = S;
   const ctx = cv.getContext('2d');
   const def = UNIT_DEFS[type];
@@ -32,9 +32,9 @@ function makeUnitIcon(type, colorIdx) {
     path: null, walkPhase: 0, anim: 0, state: 'idle',
     carry: { type: null, amount: 0 }, radius: def.radius,
   };
-  const scale = def.art === 'horse' ? 0.82 : 1.02;
+  const scale = def.art === 'horse' ? 1.15 : 1.35;
   ctx.save();
-  ctx.translate(S / 2 - (def.art === 'horse' ? 2 : 0), S - 5);
+  ctx.translate(S / 2, S - 8);
   ctx.scale(scale, scale);
   drawUnit(ctx, fake, PLAYER_COLORS[colorIdx]);
   ctx.restore();
@@ -47,7 +47,7 @@ function makeBuildingIcon(type, colorIdx) {
   if (ICON_CACHE[key]) return ICON_CACHE[key];
   const def = BUILDING_DEFS[type];
   const cv = document.createElement('canvas');
-  const S = 48;
+  const S = 64;
   cv.width = S; cv.height = S;
   const ctx = cv.getContext('2d');
   const pxW = def.w * CFG.TILE, pxH = def.h * CFG.TILE;
@@ -55,13 +55,16 @@ function makeBuildingIcon(type, colorIdx) {
     def, type, kind: 'building', seed: 12345, built: true, hitFlash: 0,
     w: def.w, h: def.h, tileX: 0, tileY: 0,
     left: 0, top: 0, right: pxW, bottom: pxH,
-    pxW, pxH, x: pxW / 2, y: pxH / 2, anim: 0,
+    pxW, pxH, x: 0, y: 0, anim: 0,
     amount: def.farmFood || 0, maxAmount: def.farmFood || 1,
     buildProgress: 1,
   };
-  const scale = Math.min((S - 6) / pxW, (S - 12) / (pxH + 12));
+  // Fit the projected diamond plus whatever the structure rises to.
+  const tall = { towncenter: 118, castle: 104, tower: 86, farm: 12 }[type] || 66;
+  const wide = (pxW + pxH) * 0.5;
+  const scale = Math.min((S - 4) / wide, (S - 4) / (tall + (pxW + pxH) * 0.25));
   ctx.save();
-  ctx.translate(S / 2 - (pxW / 2) * scale, S - 3 - pxH * scale);
+  ctx.translate(S / 2, S - 5);
   ctx.scale(scale, scale);
   drawBuilding(ctx, fake, PLAYER_COLORS[colorIdx], 0);
   ctx.restore();
@@ -96,17 +99,19 @@ const UI = {
       gameover: document.getElementById('gameover'),
       goTitle: document.getElementById('go-title'),
       goBody: document.getElementById('go-body'),
+      objectives: document.getElementById('obj-list'),
     };
 
     document.getElementById('btn-idle').addEventListener('click', () => {
       const v = G.findIdleVillager();
       if (v) { G.selectOne(v, false); G.cam.centerOn(v.x, v.y); } else G.toast('No idle villagers');
     });
-    document.getElementById('btn-pause').addEventListener('click', () => {
-      G.paused = !G.paused;
-      document.getElementById('btn-pause').textContent = G.paused ? '▶' : '❚❚';
+    document.getElementById('btn-army').addEventListener('click', () => {
+      const list = G.units.filter(u => u.alive && u.owner === G.humanId && u.isMilitary);
+      if (list.length) G.select(list.slice(0, 60), false); else G.toast('No army yet');
     });
-    document.getElementById('btn-help').addEventListener('click', () => this.toggleHelp());
+    for (const id of ['btn-help', 'btn-help2', 'btn-score', 'btn-diplo', 'btn-tech'])
+      document.getElementById(id).addEventListener('click', () => this.toggleHelp());
     document.getElementById('help-close').addEventListener('click', () => this.toggleHelp(false));
     document.getElementById('go-again').addEventListener('click', () => location.reload());
   },
@@ -136,6 +141,7 @@ const UI = {
     const idle = G.units.filter(u => u.alive && u.owner === G.humanId && u.isWorker && u.state === 'idle' && !u.target).length;
     this.el.idle.textContent = idle;
     this.el.idle.parentElement.classList.toggle('warn', idle > 0);
+    this.updateObjectives(p);
 
     // banner
     if (G.banner) {
@@ -147,6 +153,39 @@ const UI = {
     this.updateButtonStates();
     this.updateQueue();
     this.updateSelectionStats();
+  },
+
+  /**
+   * A short rolling goal list. Derived from live state rather than scripted,
+   * so it always points at something useful to do next.
+   */
+  updateObjectives(p) {
+    const mine = (t) => G.buildings.some(b => b.alive && b.built && b.owner === p.id && b.type === t);
+    const army = G.units.filter(u => u.alive && u.owner === p.id && u.isMilitary).length;
+    const vils = G.units.filter(u => u.alive && u.owner === p.id && u.isWorker).length;
+    const goals = [];
+
+    if (vils < 12) goals.push({ t: `Train ${12 - vils} more Villagers`, done: false });
+    if (!mine('house') && p.popCap - p.pop <= 2) goals.push({ t: 'Build a House', done: false });
+    if (!mine('lumbercamp')) goals.push({ t: 'Build a Lumber Camp', done: mine('lumbercamp') });
+    else if (!mine('mill')) goals.push({ t: 'Build a Mill', done: false });
+    if (!mine('barracks')) goals.push({ t: 'Build a Barracks', done: false });
+    else if (p.age >= 1 && !mine('blacksmith')) goals.push({ t: 'Build a Blacksmith', done: false });
+    if (mine('barracks') && army < 10) goals.push({ t: `Train ${10 - army} more Soldiers`, done: false });
+    if (p.age < AGES.length - 1) goals.push({ t: `Advance to ${AGES[p.age + 1].name}`, done: false });
+    goals.push({ t: 'Destroy the Red Empire', done: false });
+
+    const show = goals.slice(0, 3);
+    const sig = show.map(g => g.t).join('|');
+    if (sig === this._objSig) return;
+    this._objSig = sig;
+    this.el.objectives.innerHTML = '';
+    for (const g of show) {
+      const li = document.createElement('li');
+      li.textContent = g.t;
+      if (g.done) li.className = 'done';
+      this.el.objectives.appendChild(li);
+    }
   },
 
   updateButtonStates() {
@@ -169,6 +208,11 @@ const UI = {
     if (this._qSig !== sig) {
       this._qSig = sig;
       q.innerHTML = '';
+      const count = document.createElement('div');
+      count.className = 'qitem count';
+      count.textContent = b.queue.length;
+      count.title = 'Items queued';
+      q.appendChild(count);
       b.queue.forEach((item, i) => {
         const d = document.createElement('div');
         d.className = 'qitem';
@@ -199,7 +243,7 @@ const UI = {
     if (carEl && e.carry) carEl.textContent = e.carry.amount > 0.5
       ? `${Math.floor(e.carry.amount)} ${e.carry.type}` : '—';
     const prEl = this.el.selBody.querySelector('.prog-val');
-    if (prEl && e.kind === 'building' && !e.built) prEl.textContent = `${Math.floor(e.buildProgress * 100)}%`;
+    if (prEl && e.kind === 'building' && !e.built) prEl.style.width = `${e.buildProgress * 100}%`;
   },
 
   /* -------------------------------------------------------- selection UI */
@@ -253,25 +297,28 @@ const UI = {
         : first.kind === 'building' ? makeBuildingIcon(first.type, first.owner) : null;
       if (icon) this.el.selIcon.appendChild(iconEl(icon));
 
+      const stat = (icon, value, cls) =>
+        `<div class="stat"><i class="si si-${icon}"></i><span class="sv ${cls || ''}">${value}</span></div>`;
       const rows = [];
       if (first.kind !== 'resource') {
-        rows.push(`<span class="k">HP</span><span class="v hp-val">${Math.ceil(first.hp)}/${first.maxHp}</span>`);
+        rows.push(stat('hp', `${Math.ceil(first.hp)}/${first.maxHp}`, 'hp-val'));
       }
       if (first.kind === 'unit') {
-        rows.push(`<span class="k">Attack</span><span class="v">${first.attackValue}</span>`);
-        rows.push(`<span class="k">Armor</span><span class="v">${first.armorValue}/${first.pierceArmorValue}</span>`);
-        if (first.isWorker) rows.push(`<span class="k">Carrying</span><span class="v carry-val">—</span>`);
-        else rows.push(`<span class="k">Range</span><span class="v">${first.rangeValue.toFixed(1)}</span>`);
+        rows.push(stat('atk', first.attackValue));
+        rows.push(stat('armor', `${first.armorValue}/${first.pierceArmorValue}`));
+        if (first.isWorker) rows.push(stat('pop', '<span class="carry-val">—</span>'));
       } else if (first.kind === 'resource') {
-        rows.push(`<span class="k">${first.resType}</span><span class="v amt-val">${Math.ceil(first.amount)}</span>`);
+        rows.push(stat('pop', `<span class="amt-val">${Math.ceil(first.amount)}</span> ${first.resType}`));
       } else if (first.kind === 'building') {
-        if (!first.built) rows.push(`<span class="k">Building</span><span class="v prog-val">${Math.floor(first.buildProgress * 100)}%</span>`);
-        if (first.def.farmFood) rows.push(`<span class="k">Food left</span><span class="v amt-val">${Math.ceil(first.amount)}</span>`);
-        if (first.def.atk) rows.push(`<span class="k">Attack</span><span class="v">${first.def.atk}</span>`);
-        if (first.def.pop) rows.push(`<span class="k">Pop</span><span class="v">+${first.def.pop}</span>`);
+        rows.push(stat('armor', `${first.def.armor || 0}/${first.def.pierceArmor || 0}`));
+        if (first.def.atk) rows.push(stat('atk', first.def.atk));
+        if (first.def.pop) rows.push(stat('pop', `${first.def.pop}+1`));
+        if (first.def.farmFood) rows.push(stat('pop', `<span class="amt-val">${Math.ceil(first.amount)}</span> food`));
       }
+      const prog = (first.kind === 'building' && !first.built)
+        ? `<div class="progress"><span class="prog-val" style="width:${first.buildProgress * 100}%"></span></div>` : '';
       this.el.selBody.innerHTML =
-        `<div class="stats">${rows.join('')}</div>` +
+        `<div class="stats">${rows.join('')}</div>` + prog +
         (first.def && first.def.desc ? `<div class="desc">${first.def.desc}</div>` : '');
     }
 
@@ -387,11 +434,6 @@ const UI = {
 
   buildBuildMenu() {
     const p = G.players[G.humanId];
-    this.addButton({
-      id: 'back', label: 'Back', emoji: '↩',
-      tooltip: 'Back to commands  [Esc]',
-      onClick: () => this.closeBuildMenu(),
-    });
     for (const type of BUILD_MENU) {
       const def = BUILDING_DEFS[type];
       if ((def.age || 0) > p.age) continue;
@@ -406,11 +448,16 @@ const UI = {
         },
       });
     }
+    this.addButton({
+      id: 'back', label: 'Back', emoji: '✕', cls: 'cancel',
+      tooltip: 'Back to commands  [Esc]',
+      onClick: () => this.closeBuildMenu(),
+    });
   },
 
   addButton(spec) {
     const el = document.createElement('button');
-    el.className = 'cmd';
+    el.className = 'cmd' + (spec.cls ? ' ' + spec.cls : '');
     el.type = 'button';
 
     if (spec.unitIcon) el.appendChild(iconEl(makeUnitIcon(spec.unitIcon, G.humanId)));

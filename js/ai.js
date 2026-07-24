@@ -3,9 +3,6 @@
    ========================================================================= */
 'use strict';
 
-// firstAttack / waveGap are in seconds. They matter more than army size for how
-// the game *feels*: a beginner needs room to fumble through the build menu
-// before the first raid shows up.
 // firstAttack / waveGap / militaryAfter are in seconds. Timing matters more than
 // raw numbers for how the game feels: a beginner needs room to fumble through
 // the build menu before the first raid, and a hard opponent has to commit to an
@@ -255,10 +252,21 @@ class AIPlayer {
       }
       for (const [x, y] of candidates) {
         if (!this.g.canPlace(type, x, y, this.p.id)) continue;
-        // keep a walkable gap around the base so villagers aren't walled in
-        if (!this.g.grid.rectFree(x - 1, y - 1, def.w + 2, def.h + 2) && type !== 'farm') continue;
+        // Leave a lane around each structure: villagers stay unblocked, and the
+        // settlement reads as a town rather than one solid mass of roofs.
+        const pad = type === 'farm' ? 1 : 2;
+        if (!this.g.grid.rectFree(x - pad, y - pad, def.w + pad * 2, def.h + pad * 2)) continue;
         return { x, y };
       }
+    }
+    // Nothing roomy left — fall back to merely legal so the AI never stalls.
+    for (let r = 1; r <= maxR; r++) {
+      for (let dy = -r; dy <= r; dy++)
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const x = cx + dx, y = cy + dy;
+          if (this.g.canPlace(type, x, y, this.p.id)) return { x, y };
+        }
     }
     return null;
   }

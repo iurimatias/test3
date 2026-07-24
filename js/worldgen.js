@@ -10,6 +10,7 @@ class GameMap {
     this.terrain = new Uint8Array(w * h);   // TERRAIN.*
     this.grid = new Grid(w, h);
     this.starts = [];
+    this.roads = [];        // painted-on dirt tracks, purely decorative
   }
 
   t(x, y) { return this.terrain[y * this.w + x]; }
@@ -76,7 +77,63 @@ class GameMap {
       for (let x = 0; x < W; x++)
         if (this.t(x, y) === TERRAIN.WATER) this.grid.blocked[y * W + x] = 1;
 
+    this._makeRoads();
     return this;
+  }
+
+  /**
+   * Wandering dirt tracks, drawn under everything else. Cosmetic only — they
+   * don't affect movement — but they do most of the work of making the map
+   * look inhabited rather than procedurally scattered.
+   */
+  _makeRoads() {
+    const rng = this.rng;
+    const T = CFG.TILE;
+    const jitter = (x, y, amt) => [x + rng.range(-amt, amt), y + rng.range(-amt, amt)];
+
+    const track = (x0, y0, x1, y1, width, wob) => {
+      const pts = [];
+      const steps = Math.max(4, Math.round(dist(x0, y0, x1, y1) / (T * 4)));
+      for (let i = 0; i <= steps; i++) {
+        const f = i / steps;
+        // sine bow plus noise, so tracks bend instead of running straight
+        const bend = Math.sin(f * Math.PI) * wob;
+        const nx = -(y1 - y0), ny = (x1 - x0);
+        const nl = Math.hypot(nx, ny) || 1;
+        let px = lerp(x0, x1, f) + (nx / nl) * bend;
+        let py = lerp(y0, y1, f) + (ny / nl) * bend;
+        [px, py] = jitter(px, py, T * 0.7);
+        pts.push([clamp(px, 0, WORLD_W), clamp(py, 0, WORLD_H)]);
+      }
+      this.roads.push({ pts, w: width });
+    };
+
+    // the long road linking the two settlements
+    if (this.starts.length > 1) {
+      const a = this.starts[0], b = this.starts[1];
+      track(a.x * T, a.y * T, b.x * T, b.y * T, 20, rng.range(-T * 12, T * 12));
+    }
+
+    // spokes radiating out of each base toward the surrounding countryside
+    for (const s of this.starts) {
+      const base = rng.range(0, TAU);
+      const spokes = 5;
+      for (let i = 0; i < spokes; i++) {
+        const a = base + (i / spokes) * TAU + rng.range(-0.25, 0.25);
+        const len = rng.range(14, 30) * T;
+        track(s.x * T, s.y * T,
+          clamp(s.x * T + Math.cos(a) * len, 0, WORLD_W),
+          clamp(s.y * T + Math.sin(a) * len, 0, WORLD_H),
+          rng.range(11, 16), rng.range(-T * 5, T * 5));
+      }
+    }
+
+    // a couple of unrelated country lanes for texture
+    for (let i = 0; i < 3; i++) {
+      track(rng.range(0, WORLD_W), rng.range(0, WORLD_H),
+        rng.range(0, WORLD_W), rng.range(0, WORLD_H),
+        rng.range(9, 13), rng.range(-T * 10, T * 10));
+    }
   }
 
   inB(x, y) { return x >= 0 && y >= 0 && x < this.w && y < this.h; }

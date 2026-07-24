@@ -1,35 +1,51 @@
 /* =========================================================================
-   Renderer — camera, world drawing, fog of war, minimap
+   Renderer — isometric camera, painter's-order world draw, fog, minimap
    ========================================================================= */
 'use strict';
 
+/** Camera lives in isometric space; the world is a diamond within it. */
 class Camera {
   constructor() { this.x = 0; this.y = 0; this.zoom = 1; }
   get vw() { return G.canvas.width / (this.zoom * G.dpr); }
   get vh() { return G.canvas.height / (this.zoom * G.dpr); }
+
   clampToWorld() {
-    this.x = clamp(this.x, -200, WORLD_W - this.vw + 200);
-    this.y = clamp(this.y, -200, WORLD_H - this.vh + 200);
+    const padX = Math.max(220, this.vw * 0.35);
+    const padY = Math.max(220, this.vh * 0.35);
+    this.x = clamp(this.x, ISO_MIN_X - padX, ISO_MAX_X - this.vw + padX);
+    this.y = clamp(this.y, ISO_MIN_Y - padY, ISO_MAX_Y - this.vh + padY);
   }
+  /** Centre on a point given in WORLD coordinates. */
   centerOn(wx, wy) {
-    this.x = wx - this.vw / 2;
-    this.y = wy - this.vh / 2;
+    const [ix, iy] = worldToIso(wx, wy);
+    this.x = ix - this.vw / 2;
+    this.y = iy - this.vh / 2;
     this.clampToWorld();
   }
-  toScreen(wx, wy) { return [(wx - this.x) * this.zoom, (wy - this.y) * this.zoom]; }
-  toWorld(sx, sy) { return [sx / this.zoom + this.x, sy / this.zoom + this.y]; }
+  /** World -> screen pixels. */
+  toScreen(wx, wy) {
+    const [ix, iy] = worldToIso(wx, wy);
+    return [(ix - this.x) * this.zoom, (iy - this.y) * this.zoom];
+  }
+  /** Screen pixels -> world ground point. */
+  toWorld(sx, sy) {
+    return isoToWorld(sx / this.zoom + this.x, sy / this.zoom + this.y);
+  }
+  /** Screen pixels -> iso space (what the renderer draws in). */
+  toIso(sx, sy) {
+    return [sx / this.zoom + this.x, sy / this.zoom + this.y];
+  }
 }
 
 /**
- * Visibility grid stored at `RES` samples per tile, so the soft upscaled edge
- * is a fraction of a tile wide instead of a whole one.
+ * Visibility grid at `res` samples per tile. Stored in world-tile space and
+ * sheared onto the ground plane at draw time.
  */
 class FogOfWar {
   constructor(tilesW, tilesH) {
     this.res = 2;
     this.w = tilesW * this.res;
     this.h = tilesH * this.res;
-    this.tilesW = tilesW; this.tilesH = tilesH;
     this.explored = new Uint8Array(this.w * this.h);
     this.visible = new Uint8Array(this.w * this.h);
     this.canvas = document.createElement('canvas');
@@ -55,9 +71,7 @@ class FogOfWar {
     return this.visible[y * this.w + x] === 1;
   }
 
-  revealAll() {
-    this.explored.fill(1); this.visible.fill(1); this.dirty = true;
-  }
+  revealAll() { this.explored.fill(1); this.visible.fill(1); this.dirty = true; }
 
   _stamp(cx, cy, r) {
     const r2 = r * r;
@@ -92,16 +106,18 @@ class FogOfWar {
     const n = this.w * this.h;
     for (let i = 0; i < n; i++) {
       const o = i * 4;
-      d[o] = 32; d[o + 1] = 29; d[o + 2] = 23;
-      d[o + 3] = this.visible[i] ? 0 : (this.explored[i] ? 118 : 255);
+      d[o] = 27; d[o + 1] = 36; d[o + 2] = 19;
+      d[o + 3] = this.visible[i] ? 0 : (this.explored[i] ? 108 : 252);
     }
     this.ctx.putImageData(this.img, 0, 0);
     this.dirty = false;
   }
 
+  /** Draw sheared onto the ground plane; caller is already in iso space. */
   draw(ctx) {
     if (this.dirty) this._rebuild();
     ctx.save();
+    isoMatrix(ctx);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(this.canvas, 0, 0, this.w, this.h, 0, 0, WORLD_W, WORLD_H);
@@ -117,27 +133,60 @@ class Renderer {
     this.ctx = canvas.getContext('2d');
     this.terrainCanvas = null;
     this.minimapTerrain = null;
+    this._drawList = [];
   }
 
   buildTerrain(map) {
     this.terrainCanvas = renderTerrain(map);
-    // minimap base
+    this.terrainOX = -ISO_MIN_X + 2;   // iso x of terrain canvas origin
+    this.terrainOY = 2;
+
+    // Minimap base, also isometric so it matches the world it represents.
+    const MM = 256;
     const mm = document.createElement('canvas');
-    mm.width = map.w; mm.height = map.h;
+    mm.width = MM; mm.height = MM;
     const c = mm.getContext('2d');
-    const img = c.createImageData(map.w, map.h);
+
+    const flat = document.createElement('canvas');
+    flat.width = map.w; flat.height = map.h;
+    const fc = flat.getContext('2d');
+    const img = fc.createImageData(map.w, map.h);
     const cols = {
-      [TERRAIN.GRASS]: [206, 197, 160],
-      [TERRAIN.DIRT]: [198, 176, 130],
-      [TERRAIN.SAND]: [216, 197, 150],
-      [TERRAIN.WATER]: [150, 185, 205],
+      [TERRAIN.GRASS]: [118, 158, 62],
+      [TERRAIN.DIRT]: [176, 150, 100],
+      [TERRAIN.SAND]: [206, 186, 134],
+      [TERRAIN.WATER]: [64, 118, 158],
     };
     for (let i = 0; i < map.w * map.h; i++) {
       const c3 = cols[map.terrain[i]] || cols[0];
-      img.data[i * 4] = c3[0]; img.data[i * 4 + 1] = c3[1]; img.data[i * 4 + 2] = c3[2]; img.data[i * 4 + 3] = 255;
+      img.data[i * 4] = c3[0]; img.data[i * 4 + 1] = c3[1]; img.data[i * 4 + 2] = c3[2];
+      img.data[i * 4 + 3] = 255;
     }
-    c.putImageData(img, 0, 0);
+    fc.putImageData(img, 0, 0);
+
+    // Shear the square map into a diamond and centre it: the projected map is
+    // twice as wide as it is tall, so it has to be offset to sit in the middle
+    // of a square minimap rather than hugging the top edge.
+    const sc = MM / (map.w + map.h);
+    const oy = (MM - (map.w + map.h) * sc * 0.5) / 2;
+    c.save();
+    c.translate(MM / 2, oy);
+    c.scale(sc * 2, sc * 2);
+    c.transform(ISO_A, ISO_B, -ISO_A, ISO_B, 0, 0);
+    c.imageSmoothingEnabled = true;
+    c.drawImage(flat, 0, 0);
+    c.restore();
     this.minimapTerrain = mm;
+    this.mmScale = sc;
+    this.mmOY = oy;
+    this.mmSize = MM;
+  }
+
+  /** World point -> minimap canvas pixel. */
+  minimapPoint(wx, wy) {
+    const tx = wx / CFG.TILE, ty = wy / CFG.TILE;
+    const s = this.mmScale;
+    return [this.mmSize / 2 + (tx - ty) * s, this.mmOY + (tx + ty) * s * 0.5];
   }
 
   /* ------------------------------------------------------------ main draw */
@@ -148,157 +197,169 @@ class Renderer {
     const W = this.canvas.width / g.dpr, H = this.canvas.height / g.dpr;
 
     ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
-    ctx.fillStyle = '#d9cfb6';
+    ctx.fillStyle = '#1b2413';
     ctx.fillRect(0, 0, W, H);
 
     ctx.save();
     ctx.scale(cam.zoom, cam.zoom);
     ctx.translate(-cam.x, -cam.y);
 
-    const vx0 = cam.x, vy0 = cam.y, vx1 = cam.x + cam.vw, vy1 = cam.y + cam.vh;
-    const inView = (x, y, pad) => x > vx0 - pad && x < vx1 + pad && y > vy0 - pad && y < vy1 + pad;
+    // viewport in iso space, with slack for tall buildings poking in from below
+    const vx0 = cam.x - 120, vy0 = cam.y - 220;
+    const vx1 = cam.x + cam.vw + 120, vy1 = cam.y + cam.vh + 120;
+    const inView = (ix, iy) => ix > vx0 && ix < vx1 && iy > vy0 && iy < vy1;
 
-    // --- terrain ---
-    const sx = clamp(vx0, 0, WORLD_W), sy = clamp(vy0, 0, WORLD_H);
-    const sw = clamp(vx1, 0, WORLD_W) - sx, sh = clamp(vy1, 0, WORLD_H) - sy;
-    if (sw > 0 && sh > 0) ctx.drawImage(this.terrainCanvas, sx, sy, sw, sh, sx, sy, sw, sh);
+    // --- ground ---
+    const sx = clamp(vx0 + this.terrainOX, 0, this.terrainCanvas.width);
+    const sy = clamp(vy0 + this.terrainOY, 0, this.terrainCanvas.height);
+    const sw = clamp(vx1 + this.terrainOX, 0, this.terrainCanvas.width) - sx;
+    const sh = clamp(vy1 + this.terrainOY, 0, this.terrainCanvas.height) - sy;
+    if (sw > 0 && sh > 0) {
+      ctx.drawImage(this.terrainCanvas, sx, sy, sw, sh,
+        sx - this.terrainOX, sy - this.terrainOY, sw, sh);
+    }
 
-    // world border
-    ctx.strokeStyle = 'rgba(70,60,45,0.5)';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(0, 0, WORLD_W, WORLD_H);
+    // map rim
+    ctx.strokeStyle = 'rgba(24,34,15,0.7)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    const c0 = worldToIso(0, 0), c1 = worldToIso(WORLD_W, 0);
+    const c2 = worldToIso(WORLD_W, WORLD_H), c3 = worldToIso(0, WORLD_H);
+    ctx.moveTo(c0[0], c0[1]); ctx.lineTo(c1[0], c1[1]);
+    ctx.lineTo(c2[0], c2[1]); ctx.lineTo(c3[0], c3[1]);
+    ctx.closePath();
+    ctx.stroke();
 
     const fog = g.fog;
     const seen = (e) => !CFG.FOG || fog.isVisiblePx(e.x, e.y) || e.owner === g.humanId;
 
-    // --- decor (stumps, rubble, bones) ---
+    // --- flat things painted straight onto the ground ---
     for (const d of g.decor) {
-      if (!inView(d.x, d.y, 40)) continue;
+      const [ix, iy] = worldToIso(d.x, d.y);
+      if (!inView(ix, iy)) continue;
       if (CFG.FOG && !fog.isExplored(Math.floor(d.x / CFG.TILE), Math.floor(d.y / CFG.TILE))) continue;
       drawDecor(ctx, d);
     }
-
-    // --- flat things first (farms) ---
     for (const b of g.buildings) {
-      if (b.def.art !== 'farm' || !inView(b.x, b.y, 80)) continue;
+      if (b.def.art !== 'farm') continue;
+      const [ix, iy] = worldToIso(b.x, b.y);
+      if (!inView(ix, iy)) continue;
       if (CFG.FOG && !fog.isExplored(b.tileX, b.tileY)) continue;
       drawBuilding(ctx, b, PLAYER_COLORS[b.owner], g.time);
     }
 
-    // --- depth-sorted pass ---
-    const drawList = [];
-    for (const b of g.buildings) {
-      if (b.def.art === 'farm') continue;
-      if (!inView(b.x, b.y, 140)) continue;
-      if (CFG.FOG && !fog.isExplored(b.tileX, b.tileY)) continue;
-      // buildings remain visible once explored (remembered), units do not
-      drawList.push(b);
-    }
-    for (const r of g.resources) {
-      if (!r.alive || !inView(r.x, r.y, 60)) continue;
-      if (CFG.FOG && !fog.isExplored(r.tileX, r.tileY)) continue;
-      drawList.push(r);
-    }
-    for (const u of g.units) {
-      if (!u.alive || !inView(u.x, u.y, 60)) continue;
-      if (CFG.FOG && !seen(u)) continue;
-      drawList.push(u);
-    }
-    for (const c of g.corpses) {
-      if (!inView(c.x, c.y, 60)) continue;
-      drawList.push(c);
-    }
-    drawList.sort((a, b) => (a.kind === 'building' ? a.bottom : a.y) - (b.kind === 'building' ? b.bottom : b.y));
-
-    // selection rings under everything selected
+    // selection markers sit under the figures they belong to
     for (const e of g.selection) {
-      if (!e.alive || !inView(e.x, e.y, 120)) continue;
-      this._selectionRing(ctx, e);
+      if (!e.alive) continue;
+      const [ix, iy] = worldToIso(e.x, e.y);
+      if (!inView(ix, iy)) continue;
+      this._selectionMark(ctx, e, false);
     }
     if (g.hoverEntity && !g.hoverEntity.selected && g.hoverEntity.alive) {
-      this._hoverRing(ctx, g.hoverEntity);
+      this._selectionMark(ctx, g.hoverEntity, true);
     }
 
-    for (const e of drawList) {
+    // --- painter's order: back to front along the world diagonal ---
+    const list = this._drawList;
+    list.length = 0;
+    for (const b of g.buildings) {
+      if (b.def.art === 'farm') continue;
+      const [ix, iy] = worldToIso(b.x, b.y);
+      if (!inView(ix, iy)) continue;
+      if (CFG.FOG && !fog.isExplored(b.tileX, b.tileY)) continue;
+      list.push(b);
+    }
+    for (const r of g.resources) {
+      if (!r.alive) continue;
+      const [ix, iy] = worldToIso(r.x, r.y);
+      if (!inView(ix, iy)) continue;
+      if (CFG.FOG && !fog.isExplored(r.tileX, r.tileY)) continue;
+      list.push(r);
+    }
+    for (const u of g.units) {
+      if (!u.alive) continue;
+      const [ix, iy] = worldToIso(u.x, u.y);
+      if (!inView(ix, iy)) continue;
+      if (CFG.FOG && !seen(u)) continue;
+      list.push(u);
+    }
+    for (const c of g.corpses) {
+      const [ix, iy] = worldToIso(c.x, c.y);
+      if (!inView(ix, iy)) continue;
+      list.push(c);
+    }
+    // depth key: distance along the screen-down diagonal. Buildings use their
+    // far-south corner so units standing in front of them sort correctly.
+    const depth = (e) => e.kind === 'building'
+      ? (e.right + e.bottom) - CFG.TILE
+      : e.x + e.y;
+    list.sort((a, b) => depth(a) - depth(b));
+
+    for (const e of list) {
       if (e.kind === 'building') drawBuilding(ctx, e, PLAYER_COLORS[e.owner], g.time);
       else if (e.kind === 'resource') drawResource(ctx, e, g.time);
       else drawUnit(ctx, e, PLAYER_COLORS[e.owner] || PLAYER_COLORS[0]);
     }
 
-    // --- projectiles ---
     for (const p of g.projectiles) {
-      if (!inView(p.x, p.y, 40)) continue;
+      const [ix, iy] = worldToIso(p.x, p.y);
+      if (!inView(ix, iy)) continue;
       drawProjectile(ctx, p);
     }
 
-    // --- health bars ---
-    for (const e of drawList) {
+    // --- bars and overlays ---
+    for (const e of list) {
       if (e.kind === 'resource' || e.deathT !== undefined) continue;
-      const dmg = e.hp < e.maxHp;
-      if (!dmg && !e.selected) continue;
-      this._healthBar(ctx, e);
+      if (e.hp < e.maxHp || e.selected) this._healthBar(ctx, e);
     }
-
-    // resource amount bar on selected/hovered nodes
     for (const e of g.selection) {
       if (e.kind === 'resource') this._resourceBar(ctx, e);
       else if (e.kind === 'building' && e.def.farmFood && e.built) this._resourceBar(ctx, e);
-    }
-
-    // --- rally points of selected buildings ---
-    for (const e of g.selection) {
       if (e.kind === 'building' && e.rally) this._rallyFlag(ctx, e);
     }
 
-    // --- build ghost ---
-    if (g.placing) {
-      const t = g.placeTile;
-      if (t) drawGhost(ctx, g.placing, t.x, t.y, g.placeValid);
+    if (g.placing && g.placeTile) {
+      drawGhost(ctx, g.placing, g.placeTile.x, g.placeTile.y, g.placeValid);
     }
 
-    // --- command feedback pings ---
     for (const fx of g.pings) {
       const a = 1 - fx.t / fx.life;
+      const [ix, iy] = worldToIso(fx.x, fx.y);
       ctx.strokeStyle = fx.color;
       ctx.globalAlpha = a;
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.arc(fx.x, fx.y, 4 + (1 - a) * 16, 0, TAU);
+      ctx.ellipse(ix, iy, 6 + (1 - a) * 22, (6 + (1 - a) * 22) * 0.5, 0, 0, TAU);
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
 
-    // --- fog ---
     if (CFG.FOG) fog.draw(ctx);
 
-    ctx.restore();
-
-    // --- floating text (screen space, above fog) ---
-    ctx.save();
-    ctx.scale(cam.zoom, cam.zoom);
-    ctx.translate(-cam.x, -cam.y);
+    // floating text rides above the fog
     ctx.textAlign = 'center';
     for (const f of g.floats) {
       const a = 1 - f.t / f.life;
+      const [ix, iy] = worldToIso(f.x, f.y);
       ctx.globalAlpha = a;
       ctx.font = 'bold 13px ui-monospace, monospace';
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(250,246,236,0.9)';
-      ctx.fillStyle = RES_ICON_COLORS[f.kind] || '#2b2b2b';
-      ctx.strokeText(f.text, f.x, f.y - f.t * 22);
-      ctx.fillText(f.text, f.x, f.y - f.t * 22);
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = 'rgba(20,24,14,0.85)';
+      ctx.fillStyle = RES_ICON_COLORS[f.kind] || '#fff';
+      ctx.strokeText(f.text, ix, iy - 34 - f.t * 24);
+      ctx.fillText(f.text, ix, iy - 34 - f.t * 24);
       ctx.globalAlpha = 1;
     }
+
     ctx.restore();
 
-    // --- selection marquee ---
     if (g.dragSelect) {
       const d = g.dragSelect;
       const x = Math.min(d.x0, d.x1), y = Math.min(d.y0, d.y1);
       const w = Math.abs(d.x1 - d.x0), h = Math.abs(d.y1 - d.y0);
       ctx.save();
-      ctx.strokeStyle = '#2f7a2f';
-      ctx.fillStyle = 'rgba(90,170,90,0.14)';
+      ctx.strokeStyle = '#cfe8a0';
+      ctx.fillStyle = 'rgba(180,225,120,0.16)';
       ctx.lineWidth = 1.5;
       ctx.setLineDash([5, 3]);
       ctx.fillRect(x, y, w, h);
@@ -307,81 +368,92 @@ class Renderer {
     }
   }
 
-  _selectionRing(ctx, e) {
-    const isB = e.kind === 'building';
+  /** Diamond under buildings, ellipse under units — matching the ground plane. */
+  _selectionMark(ctx, e, hover) {
+    const [ix, iy] = worldToIso(e.x, e.y);
     ctx.save();
-    ctx.strokeStyle = e.owner === G.humanId ? '#2f7a2f' : (e.owner < 0 ? '#8a6a3a' : '#a52a1f');
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4, 3]);
-    if (isB) {
-      ctx.strokeRect(e.left + 1, e.top + 1, e.pxW - 2, e.pxH - 2);
+    ctx.translate(ix, iy);
+    const own = e.owner === G.humanId;
+    ctx.strokeStyle = own ? '#63b0ff' : (e.owner < 0 ? '#e0c477' : '#ff6a55');
+    ctx.lineWidth = hover ? 1.6 : 2.4;
+    ctx.globalAlpha = hover ? 0.5 : 1;
+    if (e.kind === 'building') {
+      ctx.beginPath();
+      isoDiamondPath(ctx, 0, 0, e.pxW / 2, e.pxH / 2, 0);
+      ctx.stroke();
+      if (!hover) {
+        ctx.fillStyle = own ? 'rgba(99,176,255,0.13)' : 'rgba(255,106,85,0.13)';
+        ctx.fill();
+      }
     } else {
       const r = (e.radius || 9) + 4;
       ctx.beginPath();
-      ctx.ellipse(e.x, e.y + 1, r, r * 0.45, 0, 0, TAU);
+      ctx.ellipse(0, 0, r, r * 0.5, 0, 0, TAU);
       ctx.stroke();
     }
     ctx.restore();
   }
 
-  _hoverRing(ctx, e) {
-    ctx.save();
-    ctx.globalAlpha = 0.5;
-    ctx.strokeStyle = e.owner === G.humanId ? '#2f7a2f' : (e.owner < 0 ? '#8a6a3a' : '#a52a1f');
-    ctx.lineWidth = 1.5;
-    if (e.kind === 'building') ctx.strokeRect(e.left + 1, e.top + 1, e.pxW - 2, e.pxH - 2);
-    else {
-      const r = (e.radius || 9) + 4;
-      ctx.beginPath(); ctx.ellipse(e.x, e.y + 1, r, r * 0.45, 0, 0, TAU); ctx.stroke();
-    }
-    ctx.restore();
+  _healthBar(ctx, e) {
+    const [ix, iy] = worldToIso(e.x, e.y);
+    const isB = e.kind === 'building';
+    const w = isB ? clamp(e.pxW * 0.9, 34, 84) : 24;
+    const top = isB ? iy - (e.pxW + e.pxH) * 0.25 - this._buildingTop(e) : iy - 42;
+    const x = ix - w / 2;
+    const frac = clamp(e.hp / e.maxHp, 0, 1);
+    ctx.fillStyle = 'rgba(15,18,10,0.72)';
+    ctx.fillRect(x - 1.5, top - 1.5, w + 3, 6);
+    ctx.fillStyle = frac > 0.6 ? '#6fc04a' : frac > 0.3 ? '#e0a92c' : '#d1452f';
+    ctx.fillRect(x, top, w * frac, 3);
   }
 
-  _healthBar(ctx, e) {
-    const isB = e.kind === 'building';
-    const w = isB ? Math.min(e.pxW - 8, 72) : 22;
-    const x = e.x - w / 2;
-    const y = isB ? e.top - 7 : e.y - (e.def.art === 'horse' ? 42 : 40);
-    const frac = clamp(e.hp / e.maxHp, 0, 1);
-    ctx.fillStyle = 'rgba(35,32,25,0.55)';
-    ctx.fillRect(x - 1, y - 1, w + 2, 5);
-    ctx.fillStyle = frac > 0.6 ? '#4a9b4a' : frac > 0.3 ? '#d9a021' : '#c0392b';
-    ctx.fillRect(x, y, w * frac, 3);
+  _buildingTop(b) {
+    switch (b.def.art) {
+      case 'towncenter': return 108;
+      case 'castle': return 92;
+      case 'tower': return 74;
+      case 'farm': return 6;
+      default: return 56;
+    }
   }
 
   _resourceBar(ctx, e) {
-    const w = 26, x = e.x - w / 2;
-    const y = e.kind === 'building' ? e.top - 14 : e.y - 30;
+    const [ix, iy] = worldToIso(e.x, e.y);
+    const w = 28, x = ix - w / 2;
+    const y = iy - (e.kind === 'building' ? 26 : 50);
     const frac = clamp(e.amount / e.maxAmount, 0, 1);
-    ctx.fillStyle = 'rgba(35,32,25,0.55)';
-    ctx.fillRect(x - 1, y - 1, w + 2, 5);
+    ctx.fillStyle = 'rgba(15,18,10,0.72)';
+    ctx.fillRect(x - 1.5, y - 1.5, w + 3, 6);
     ctx.fillStyle = RES_ICON_COLORS[e.resType] || '#888';
     ctx.fillRect(x, y, w * frac, 3);
-    ctx.fillStyle = '#3a3428';
-    ctx.font = '9px ui-monospace, monospace';
+    ctx.fillStyle = '#f0ead6';
+    ctx.font = 'bold 10px ui-monospace, monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(Math.ceil(e.amount), e.x, y - 3);
+    ctx.fillText(Math.ceil(e.amount), ix, y - 4);
   }
 
   _rallyFlag(ctx, b) {
     const r = b.rally;
-    const tx = r.entity && r.entity.alive ? r.entity.x : r.x;
-    const ty = r.entity && r.entity.alive ? r.entity.y : r.y;
+    const wx = r.entity && r.entity.alive ? r.entity.x : r.x;
+    const wy = r.entity && r.entity.alive ? r.entity.y : r.y;
+    const [bx, by] = worldToIso(b.x, b.y);
+    const [tx, ty] = worldToIso(wx, wy);
     ctx.save();
-    ctx.strokeStyle = 'rgba(47,122,47,0.65)';
-    ctx.setLineDash([6, 5]);
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(99,176,255,0.6)';
+    ctx.setLineDash([7, 6]);
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
-    ctx.moveTo(b.x, b.bottom - 4);
-    ctx.lineTo(tx, ty);
+    ctx.moveTo(bx, by); ctx.lineTo(tx, ty);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.strokeStyle = INK; ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx, ty - 20); ctx.stroke();
+    ctx.fillStyle = 'rgba(20,30,12,0.25)';
+    ctx.beginPath(); ctx.ellipse(tx, ty, 7, 3.2, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#e8dcc0'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx, ty - 26); ctx.stroke();
     ctx.fillStyle = PLAYER_COLORS[b.owner].fill;
     ctx.beginPath();
-    ctx.moveTo(tx, ty - 20); ctx.lineTo(tx + 12, ty - 16); ctx.lineTo(tx, ty - 12);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.moveTo(tx, ty - 26); ctx.lineTo(tx + 15, ty - 21); ctx.lineTo(tx, ty - 15);
+    ctx.closePath(); ctx.fill();
     ctx.restore();
   }
 
@@ -390,68 +462,84 @@ class Renderer {
   drawMinimap(g, canvas) {
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
-    const sx = W / CFG.MAP_W, sy = H / CFG.MAP_H;
+    const k = W / this.mmSize;
 
-    ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, W, H);
-    ctx.drawImage(this.minimapTerrain, 0, 0, W, H);
+    ctx.save();
+    ctx.scale(k, k);
+    ctx.drawImage(this.minimapTerrain, 0, 0);
 
-    // resources
+    const dot = (wx, wy, size, color) => {
+      const [px, py] = this.minimapPoint(wx, wy);
+      ctx.fillStyle = color;
+      ctx.fillRect(px - size / 2, py - size / 2, size, size);
+    };
+
     for (const r of g.resources) {
       if (!r.alive) continue;
       if (CFG.FOG && !g.fog.isExplored(r.tileX, r.tileY)) continue;
-      ctx.fillStyle = r.type === 'tree' ? 'rgba(90,130,70,0.95)'
-        : r.type === 'gold' ? '#d4af37'
-        : r.type === 'stone' ? '#9a9a9a' : '#c0392b';
-      ctx.fillRect(r.tileX * sx, r.tileY * sy, Math.max(1.5, sx), Math.max(1.5, sy));
+      dot(r.x, r.y, r.type === 'tree' ? 2.6 : 3,
+        r.type === 'tree' ? '#3d7f45' : r.type === 'gold' ? '#f2c318'
+          : r.type === 'stone' ? '#bdb8ac' : '#cc3b30');
     }
-    // buildings
     for (const b of g.buildings) {
       if (!b.alive) continue;
       if (CFG.FOG && !g.fog.isExplored(b.tileX, b.tileY)) continue;
+      const [px, py] = this.minimapPoint(b.x, b.y);
+      const s = this.mmScale;
       ctx.fillStyle = PLAYER_COLORS[b.owner].fill;
-      ctx.fillRect(b.tileX * sx, b.tileY * sy, b.w * sx, b.h * sy);
-      ctx.strokeStyle = PLAYER_COLORS[b.owner].ink;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(b.tileX * sx, b.tileY * sy, b.w * sx, b.h * sy);
+      ctx.beginPath();
+      ctx.moveTo(px, py - b.h * s);
+      ctx.lineTo(px + b.w * s, py);
+      ctx.lineTo(px, py + b.h * s);
+      ctx.lineTo(px - b.w * s, py);
+      ctx.closePath();
+      ctx.fill();
     }
-    // units
     for (const u of g.units) {
       if (!u.alive) continue;
       if (CFG.FOG && u.owner !== g.humanId && !g.fog.isVisiblePx(u.x, u.y)) continue;
-      ctx.fillStyle = PLAYER_COLORS[u.owner].fill;
-      const s = u.isMilitary ? 3.4 : 2.6;
-      ctx.fillRect(u.x / CFG.TILE * sx - s / 2, u.y / CFG.TILE * sy - s / 2, s, s);
+      dot(u.x, u.y, u.isMilitary ? 3.4 : 2.6, PLAYER_COLORS[u.owner].fill);
     }
 
-    // fog
     if (CFG.FOG) {
       if (g.fog.dirty) g.fog._rebuild();
+      ctx.save();
+      ctx.translate(this.mmSize / 2, this.mmOY);
+      ctx.scale(this.mmScale * 2, this.mmScale * 2);
+      ctx.transform(ISO_A, ISO_B, -ISO_A, ISO_B, 0, 0);
       ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(g.fog.canvas, 0, 0, W, H);
+      ctx.drawImage(g.fog.canvas, 0, 0, g.fog.w, g.fog.h, 0, 0, CFG.MAP_W, CFG.MAP_H);
+      ctx.restore();
     }
 
-    // attack pings
     for (const p of g.minimapPings) {
       const a = 1 - p.t / p.life;
-      ctx.strokeStyle = `rgba(220,60,45,${a})`;
+      const [px, py] = this.minimapPoint(p.x, p.y);
+      ctx.strokeStyle = `rgba(235,70,50,${a})`;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(p.x / CFG.TILE * sx, p.y / CFG.TILE * sy, 3 + (1 - a) * 12, 0, TAU);
+      ctx.ellipse(px, py, 4 + (1 - a) * 14, (4 + (1 - a) * 14) * 0.5, 0, 0, TAU);
       ctx.stroke();
     }
 
-    // viewport rect
+    // viewport outline — the camera rect maps to a parallelogram here
     const cam = g.cam;
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-    ctx.lineWidth = 1.6;
-    ctx.strokeRect(
-      cam.x / CFG.TILE * sx, cam.y / CFG.TILE * sy,
-      cam.vw / CFG.TILE * sx, cam.vh / CFG.TILE * sy);
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-    ctx.lineWidth = 0.8;
-    ctx.strokeRect(
-      cam.x / CFG.TILE * sx, cam.y / CFG.TILE * sy,
-      cam.vw / CFG.TILE * sx, cam.vh / CFG.TILE * sy);
+    const corners = [
+      cam.toWorld(0, 0),
+      cam.toWorld(cam.vw * cam.zoom, 0),
+      cam.toWorld(cam.vw * cam.zoom, cam.vh * cam.zoom),
+      cam.toWorld(0, cam.vh * cam.zoom),
+    ];
+    ctx.beginPath();
+    corners.forEach((c, i) => {
+      const [px, py] = this.minimapPoint(c[0], c[1]);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+    ctx.restore();
   }
 }

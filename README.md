@@ -1,7 +1,8 @@
 # Stick Empires
 
-An Age of Empires–style real-time strategy game where every unit and building is
-drawn as hand-sketched line art on paper. No build step, no dependencies — plain
+An Age of Empires–style real-time strategy game rendered as an isometric
+storybook world: painted grass and dirt tracks, timber buildings with shingled
+roofs, and armies of black stick figures. No build step, no dependencies — plain
 HTML, CSS and JavaScript on a 2D canvas.
 
 ## Running it
@@ -67,22 +68,50 @@ just an ordered set of plain scripts.
 |---|---|
 | `js/config.js` | Tunable constants and the unit / building / research data tables |
 | `js/utils.js` | Math, seeded RNG, cost helpers |
+| `js/iso.js` | Isometric projection, 3D box/polygon primitives, face shading |
 | `js/pathfinding.js` | Walkability grid, binary-heap A\*, throttled path queue |
 | `js/worldgen.js` | Terrain, ponds, forests, mines, starting positions |
-| `js/art.js` | Every drawing routine — sketch primitives, stick figures, buildings, terrain |
+| `js/art.js` | Every drawing routine — terrain painting, stick figures, isometric buildings |
 | `js/entities.js` | Resource nodes, units (state machine), buildings, projectiles |
-| `js/render.js` | Camera, depth-sorted world draw, fog of war, minimap |
+| `js/render.js` | Isometric camera, painter's-order draw, fog of war, minimap |
 | `js/game.js` | Player state, world collections, simulation loop, spatial queries |
 | `js/ai.js` | Opponent: economy balancing, build order, age timing, army waves |
 | `js/input.js` | Mouse, keyboard, selection, command dispatch |
 | `js/ui.js` | HUD, selection panel, command card, overlays |
 | `js/main.js` | Canvas sizing, start screen, frame loop |
 
+### How the isometric view works
+
+The simulation never leaves plain Cartesian world pixels — the grid, pathfinding,
+collision and building placement are all axis-aligned and know nothing about the
+camera. Only the renderer and mouse picking go through `iso.js`:
+
+    screenX = (worldX - worldY) * 0.5
+    screenY = (worldX + worldY) * 0.25 - height
+
+Two consequences worth knowing:
+
+- **The ground is painted flat, then sheared once.** `renderTerrainFlat` draws
+  grass, roads and shorelines top-down at world scale; `renderTerrain` shears that
+  image onto the isometric plane a single time at startup. Shearing is exactly
+  right for a flat plane, so roads stay authored in easy Cartesian coordinates and
+  the per-frame cost is one axis-aligned blit with source-rect culling.
+- **Buildings are authored in 3D.** `p3(x, y, z)` projects a point, and `box3`
+  extrudes a footprint upward, shading the lid and the two camera-facing walls.
+  Adding a structure means stacking boxes and roofs, not drawing a sprite.
+
+Picking follows the same split: buildings are picked against their footprint on
+the ground (easy to grab), while units and trees are picked against the figure as
+drawn, which stands well above its ground point.
+
 A few notes for anyone extending it:
 
 - **Adding a unit or building** is usually just a new entry in `UNIT_DEFS` /
   `BUILDING_DEFS` plus a `case` in `art.js`. Unit lines are wired through
   `UNIT_LINES`, so a new tier slots into the age progression automatically.
+- **Player colour rides on the gear, not the body.** Units are solid black
+  silhouettes; the side they belong to reads from a shield, bow, tabard or roof
+  trim. Keep that rule and new units will match the rest.
 - **Icons are generated from the game art** at runtime (`makeUnitIcon`), so a new
   unit gets a matching command-card button for free.
 - **The AI is not special-cased.** It drives the same commands the player does, and

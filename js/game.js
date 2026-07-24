@@ -161,7 +161,7 @@ const G = {
     this.ai = new AIPlayer(this.players[1], this);
 
     const home = this.map.starts[0];
-    this.cam.zoom = 1;
+    this.cam.zoom = 1.5;
     this.cam.centerOn(tileCenter(home.x), tileCenter(home.y));
 
     this.fog.update([...this.units, ...this.buildings], this.humanId);
@@ -421,27 +421,41 @@ const G = {
     return best;
   },
 
-  entityAt(wx, wy) {
-    // units first (smallest targets), then buildings, then resources
+  /**
+   * Pick whatever is under the cursor. Units and trees are picked against the
+   * figure as *drawn* (which stands well above its ground point), while
+   * buildings are picked against their footprint on the ground — the usual
+   * RTS feel, and it keeps big structures easy to grab.
+   */
+  entityAt(wx, wy, ix, iy) {
     let best = null, bestD = Infinity;
     for (const u of this.units) {
       if (!u.alive) continue;
       if (CFG.FOG && u.owner !== this.humanId && !this.fog.isVisiblePx(u.x, u.y)) continue;
-      const d = dist2(wx, wy, u.x, u.y - 18);
-      if (d < (u.radius + 10) ** 2 && d < bestD) { bestD = d; best = u; }
+      const [ux, uy] = worldToIso(u.x, u.y);
+      const tall = u.def.art === 'horse' ? 24 : 20;
+      const dx = ix - ux, dy = iy - (uy - tall);
+      const d = dx * dx + (dy * 0.75) * (dy * 0.75);
+      if (d < 18 * 18 && d < bestD) { bestD = d; best = u; }
     }
     if (best) return best;
+
     for (const b of this.buildings) {
       if (!b.alive) continue;
       if (CFG.FOG && !this.fog.isExplored(b.tileX, b.tileY)) continue;
       if (wx >= b.left && wx <= b.right && wy >= b.top && wy <= b.bottom) return b;
     }
+
     for (const r of this.resources) {
       if (!r.alive) continue;
       if (CFG.FOG && !this.fog.isExplored(r.tileX, r.tileY)) continue;
-      if (Math.abs(wx - r.x) < CFG.TILE * 0.6 && Math.abs(wy - r.y) < CFG.TILE * 0.7) return r;
+      const [rx, ry] = worldToIso(r.x, r.y);
+      const lift = r.type === 'tree' ? 26 : 10;
+      const dx = ix - rx, dy = iy - (ry - lift);
+      const d = dx * dx + (dy * 0.8) * (dy * 0.8);
+      if (d < 20 * 20 && d < bestD) { bestD = d; best = r; }
     }
-    return null;
+    return best;
   },
 
   /* ---------------------------------------------------------------- update */
@@ -612,9 +626,11 @@ const G = {
 
   selectAllOfTypeOnScreen(type) {
     const cam = this.cam;
-    const found = this.units.filter(u =>
-      u.alive && u.owner === this.humanId && u.type === type &&
-      u.x > cam.x && u.x < cam.x + cam.vw && u.y > cam.y && u.y < cam.y + cam.vh);
+    const found = this.units.filter(u => {
+      if (!u.alive || u.owner !== this.humanId || u.type !== type) return false;
+      const [ix, iy] = worldToIso(u.x, u.y);
+      return ix > cam.x && ix < cam.x + cam.vw && iy > cam.y && iy < cam.y + cam.vh;
+    });
     this.select(found, false);
   },
 

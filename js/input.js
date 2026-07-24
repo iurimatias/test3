@@ -69,8 +69,12 @@ const Input = {
     this.mouse.x = e.clientX - r.left;
     this.mouse.y = e.clientY - r.top;
     const [wx, wy] = G.cam.toWorld(this.mouse.x, this.mouse.y);
+    const [ix, iy] = G.cam.toIso(this.mouse.x, this.mouse.y);
     this.mouse.wx = wx; this.mouse.wy = wy;
+    this.mouse.ix = ix; this.mouse.iy = iy;
   },
+
+  pick() { return G.entityAt(this.mouse.wx, this.mouse.wy, this.mouse.ix, this.mouse.iy); },
 
   onMouseDown(e) {
     if (!G.running || G.gameOver) return;
@@ -100,7 +104,7 @@ const Input = {
       this.dragStart = { x: this.mouse.x, y: this.mouse.y };
       G.dragSelect = null;
     } else if (e.button === 2) {
-      this.issueCommand(this.mouse.wx, this.mouse.wy, e.shiftKey);
+      this.issueCommand(this.mouse.wx, this.mouse.wy, e.shiftKey, this.pick());
     }
   },
 
@@ -126,15 +130,15 @@ const Input = {
     // building placement ghost
     if (G.placing) {
       const def = BUILDING_DEFS[G.placing];
-      const tx = Math.floor((this.mouse.wx - (def.w - 1) * CFG.TILE / 2) / CFG.TILE);
-      const ty = Math.floor((this.mouse.wy - (def.h - 1) * CFG.TILE / 2) / CFG.TILE);
+      const tx = Math.floor(this.mouse.wx / CFG.TILE) - ((def.w - 1) >> 1);
+      const ty = Math.floor(this.mouse.wy / CFG.TILE) - ((def.h - 1) >> 1);
       G.placeTile = { x: tx, y: ty };
       G.placeValid = G.canPlace(G.placing, tx, ty, G.humanId) &&
         G.rectExplored(G.placing, tx, ty) &&
         canAfford(G.players[G.humanId].resources, def.cost);
     }
 
-    G.hoverEntity = G.entityAt(this.mouse.wx, this.mouse.wy);
+    G.hoverEntity = this.pick();
     this._updateCursor();
   },
 
@@ -167,7 +171,7 @@ const Input = {
     this.dragStart = null;
 
     // plain click select
-    const ent = G.entityAt(this.mouse.wx, this.mouse.wy);
+    const ent = this.pick();
     const now = performance.now();
     const isDouble = ent && ent === this.lastClickEntity && (now - this.lastClickTime) < 320;
     this.lastClickTime = now; this.lastClickEntity = ent;
@@ -180,19 +184,23 @@ const Input = {
   },
 
   boxSelect(box, additive) {
-    const [wx0, wy0] = G.cam.toWorld(Math.min(box.x0, box.x1), Math.min(box.y0, box.y1));
-    const [wx1, wy1] = G.cam.toWorld(Math.max(box.x0, box.x1), Math.max(box.y0, box.y1));
-
-    const inBox = (x, y) => x >= wx0 && x <= wx1 && y >= wy0 && y <= wy1;
+    // A screen rectangle maps to a rotated quad in world space, so test each
+    // entity where it is actually drawn instead of inverting the rectangle.
+    const sx0 = Math.min(box.x0, box.x1), sx1 = Math.max(box.x0, box.x1);
+    const sy0 = Math.min(box.y0, box.y1), sy1 = Math.max(box.y0, box.y1);
+    const inBox = (wx, wy) => {
+      const [px, py] = G.cam.toScreen(wx, wy);
+      return px >= sx0 && px <= sx1 && py >= sy0 - 20 && py <= sy1 + 8;
+    };
     // prefer own units; fall back to own buildings, then anything visible
     let picked = G.units.filter(u =>
-      u.alive && u.owner === G.humanId && inBox(u.x, u.y - 14));
+      u.alive && u.owner === G.humanId && inBox(u.x, u.y));
     if (!picked.length) {
       picked = G.buildings.filter(b =>
         b.alive && b.owner === G.humanId && inBox(b.x, b.y));
     }
     if (!picked.length) {
-      picked = G.units.filter(u => u.alive && inBox(u.x, u.y - 14) &&
+      picked = G.units.filter(u => u.alive && inBox(u.x, u.y) &&
         (!CFG.FOG || G.fog.isVisiblePx(u.x, u.y)));
     }
     // military first: dragging over a mixed crowd should grab the army
@@ -204,10 +212,10 @@ const Input = {
 
   onWheel(e) {
     e.preventDefault();
-    const before = G.cam.toWorld(this.mouse.x, this.mouse.y);
+    const before = G.cam.toIso(this.mouse.x, this.mouse.y);
     const factor = e.deltaY < 0 ? 1.14 : 1 / 1.14;
-    G.cam.zoom = clamp(G.cam.zoom * factor, 0.45, 2.2);
-    const after = G.cam.toWorld(this.mouse.x, this.mouse.y);
+    G.cam.zoom = clamp(G.cam.zoom * factor, 0.5, 2.6);
+    const after = G.cam.toIso(this.mouse.x, this.mouse.y);
     G.cam.x += before[0] - after[0];
     G.cam.y += before[1] - after[1];
     G.cam.clampToWorld();
@@ -215,20 +223,23 @@ const Input = {
 
   /* ------------------------------------------------------------- commands */
 
-  issueCommand(wx, wy, queued) {
+  /**
+   * `target` is what the cursor is over, passed in explicitly: right-clicking
+   * the map picks an entity, right-clicking the minimap never does.
+   */
+  issueCommand(wx, wy, queued, target) {
     const units = G.selectedUnits;
     const bld = G.selectedBuilding;
 
     // setting a rally point on a selected production building
     if (!units.length && bld && (bld.def.trains || bld.def.trainLines)) {
-      const ent = G.entityAt(wx, wy);
+      const ent = target;
       bld.rally = { x: wx, y: wy, entity: ent && ent !== bld ? ent : null };
       G.ping(wx, wy, 'rgba(47,122,47,0.9)');
       return;
     }
     if (!units.length) return;
 
-    const target = G.entityAt(wx, wy);
 
     // --- attack an enemy ---
     if (target && target.owner >= 0 && target.owner !== G.humanId) {
@@ -326,13 +337,18 @@ const Input = {
   /* ------------------------------------------------------------- minimap */
 
   onMinimapDown(e) {
+    // Invert the minimap's isometric projection rather than treating it as a
+    // plain square, or clicks land in the wrong corner of the map.
     const r = this.minimap.getBoundingClientRect();
-    const fx = (e.clientX - r.left) / r.width;
-    const fy = (e.clientY - r.top) / r.height;
-    const wx = clamp(fx, 0, 1) * WORLD_W;
-    const wy = clamp(fy, 0, 1) * WORLD_H;
+    const R = G.renderer;
+    const px = ((e.clientX - r.left) / r.width) * R.mmSize;
+    const py = ((e.clientY - r.top) / r.height) * R.mmSize;
+    const dx = (px - R.mmSize / 2) / R.mmScale;
+    const dy = (py - R.mmOY) / (R.mmScale * 0.5);
+    const wx = clamp((dx + dy) / 2, 0, CFG.MAP_W - 1) * CFG.TILE;
+    const wy = clamp((dy - dx) / 2, 0, CFG.MAP_H - 1) * CFG.TILE;
     if (e.button === 2) {
-      this.issueCommand(wx, wy, e.shiftKey);
+      this.issueCommand(wx, wy, e.shiftKey, null);
     } else {
       this._mmDrag = true;
       G.cam.centerOn(wx, wy);
@@ -432,9 +448,9 @@ const Input = {
         break;
 
       case 'Equal': case 'NumpadAdd':
-        G.cam.zoom = clamp(G.cam.zoom * 1.15, 0.45, 2.2); break;
+        G.cam.zoom = clamp(G.cam.zoom * 1.15, 0.5, 2.6); break;
       case 'Minus': case 'NumpadSubtract':
-        G.cam.zoom = clamp(G.cam.zoom / 1.15, 0.45, 2.2); break;
+        G.cam.zoom = clamp(G.cam.zoom / 1.15, 0.5, 2.6); break;
 
       case 'F2':
         G.speed = G.speed === 1 ? 2 : 1;

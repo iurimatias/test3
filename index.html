@@ -14,39 +14,63 @@
 
   <!-- ================= top bar ================= -->
   <div id="topbar">
-    <div class="res" title="Food"><span class="ico food">🍖</span><span id="res-food">0</span></div>
-    <div class="res" title="Wood"><span class="ico wood">🪵</span><span id="res-wood">0</span></div>
-    <div class="res" title="Gold"><span class="ico gold">🪙</span><span id="res-gold">0</span></div>
-    <div class="res" title="Stone"><span class="ico stone">🪨</span><span id="res-stone">0</span></div>
-    <div class="res" title="Population"><span class="ico pop">👥</span><span id="res-pop">0/0</span></div>
-    <div class="sep"></div>
-    <div class="res age" title="Current age"><span class="ico">🏛</span><span id="hud-age">Dark Age</span></div>
-    <div class="spacer"></div>
-    <div class="res" title="Idle villagers — click to cycle"><button id="btn-idle" class="mini">💤 <span id="hud-idle">0</span></button></div>
-    <div class="res" title="Elapsed time"><span class="ico">⏱</span><span id="hud-clock">00:00</span></div>
-    <button id="btn-pause" class="mini" title="Pause  [P]">❚❚</button>
-    <button id="btn-help" class="mini" title="Controls">?</button>
+    <div class="res-cluster">
+      <div class="res" title="Wood"><i class="ico ico-wood"></i><span id="res-wood">0</span></div>
+      <div class="res" title="Food"><i class="ico ico-food"></i><span id="res-food">0</span></div>
+      <div class="res" title="Gold"><i class="ico ico-gold"></i><span id="res-gold">0</span></div>
+      <div class="res" title="Stone"><i class="ico ico-stone"></i><span id="res-stone">0</span></div>
+      <div class="res" title="Population"><i class="ico ico-pop"></i><span id="res-pop">0/0</span></div>
+    </div>
+
+    <div id="age-banner">
+      <span class="crest"></span>
+      <span id="hud-age">Dark Age</span>
+    </div>
+
+    <div class="tool-cluster">
+      <button class="tool" id="btn-idle" title="Cycle idle villagers  [.]"><i class="ico ico-idle"></i><span id="hud-idle" class="badge">0</span></button>
+      <button class="tool" id="btn-army" title="Select your army  [F]"><i class="ico ico-army"></i></button>
+      <button class="tool" id="btn-score" title="Score"><i class="ico ico-trophy"></i></button>
+      <button class="tool" id="btn-help" title="Controls"><i class="ico ico-gear"></i></button>
+    </div>
   </div>
 
+  <!-- ================= objectives ================= -->
+  <div id="objectives">
+    <ul id="obj-list"></ul>
+  </div>
+
+  <div id="clock-chip"><i class="ico ico-clock"></i><span id="hud-clock">00:00</span></div>
   <div id="banner" class="hidden"></div>
   <div id="toasts"></div>
 
   <!-- ================= bottom bar ================= -->
   <div id="bottombar">
-    <div id="selection-panel">
-      <div class="sel-head">
-        <div id="sel-icon"></div>
-        <div id="sel-name">Nothing selected</div>
-      </div>
-      <div id="sel-body"><div class="hint">Left-click to select · right-click to command</div></div>
-      <div id="queue" class="hidden"></div>
+    <div class="frame" id="palette-frame">
+      <div id="command-card"></div>
     </div>
 
-    <div id="command-card"></div>
+    <div class="frame" id="selection-frame">
+      <div id="selection-panel">
+        <div class="sel-left">
+          <div id="sel-name">Nothing selected</div>
+          <div class="sel-row">
+            <div id="sel-icon"></div>
+            <div id="sel-body"><div class="hint">Left-click to select · right-click to command</div></div>
+          </div>
+        </div>
+        <div id="queue"></div>
+      </div>
+    </div>
 
-    <div id="minimap-wrap">
-      <canvas id="minimap" width="220" height="220"></canvas>
-      <div class="mm-label">MAP</div>
+    <div id="side-tools">
+      <button class="round" id="btn-diplo" title="Players"><i class="ico ico-globe"></i></button>
+      <button class="round" id="btn-tech" title="Age progress"><i class="ico ico-crown"></i></button>
+      <button class="round" id="btn-help2" title="How to play">?</button>
+    </div>
+
+    <div class="frame" id="minimap-frame">
+      <canvas id="minimap" width="256" height="256"></canvas>
     </div>
   </div>
 
@@ -109,7 +133,7 @@
     <div class="panel start-panel">
       <h1 class="logo">Stick&nbsp;Empires</h1>
       <p class="tag">An age of empires, drawn on paper.</p>
-      <canvas id="start-art" width="520" height="130"></canvas>
+      <canvas id="start-art" width="560" height="150"></canvas>
       <div class="field">
         <label>Opponent</label>
         <div class="choices" id="difficulty">
@@ -126,6 +150,7 @@
 
 <script src="js/config.js"></script>
 <script src="js/utils.js"></script>
+<script src="js/iso.js"></script>
 <script src="js/pathfinding.js"></script>
 <script src="js/worldgen.js"></script>
 <script src="js/art.js"></script>

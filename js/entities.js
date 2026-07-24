@@ -800,9 +800,14 @@ class Building extends Entity {
 /* ------------------------------------------------------------------------
    Projectile
    ------------------------------------------------------------------------ */
+/**
+ * Arrows travel across the flat world; `arcZ` is their height above it, which
+ * the renderer lifts them by. Keeping height separate from world y means the
+ * shot arcs correctly once the scene is projected isometrically.
+ */
 class Projectile {
   constructor(from, target, damage, dtype, delay) {
-    this.x = from.x; this.y = from.y - (from.kind === 'building' ? 22 : 14);
+    this.x = from.x; this.y = from.y;
     this.sx = this.x; this.sy = this.y;
     this.target = target;
     this.damage = damage;
@@ -814,19 +819,25 @@ class Projectile {
     this.delay = delay || 0;
     this.t = 0;
     this.angle = 0;
+    this.launchZ = from.kind === 'building' ? 34 : 20;
+    this.arcZ = this.launchZ;
     const d = dist(this.x, this.y, target.x, target.y);
     this.travel = d / this.speed;
-    this.arc = Math.min(26, d * 0.14);
+    this.arc = Math.min(46, 16 + d * 0.13);
   }
   update(dt) {
     if (this.delay > 0) { this.delay -= dt; return; }
     if (!this.target || !this.target.alive) { this.alive = false; return; }
     this.t += dt / Math.max(0.05, this.travel);
-    const tx = this.target.x, ty = this.target.y - (this.target.kind === 'building' ? 10 : 12);
-    const px = this.x, py = this.y;
-    this.x = lerp(this.sx, tx, Math.min(1, this.t));
-    this.y = lerp(this.sy, ty, Math.min(1, this.t)) - Math.sin(Math.min(1, this.t) * Math.PI) * this.arc;
-    this.angle = Math.atan2(this.y - py, this.x - px);
+    const f = Math.min(1, this.t);
+    const tx = this.target.x, ty = this.target.y;
+    const px = this.x, py = this.y, pz = this.arcZ;
+    this.x = lerp(this.sx, tx, f);
+    this.y = lerp(this.sy, ty, f);
+    this.arcZ = lerp(this.launchZ, 14, f) + Math.sin(f * Math.PI) * this.arc;
+    // aim the sprite along its projected screen path
+    const a = worldToIso(px, py), b = worldToIso(this.x, this.y);
+    this.angle = Math.atan2((b[1] - this.arcZ) - (a[1] - pz), b[0] - a[0]);
     if (this.t >= 1) {
       this.alive = false;
       G.dealDamage(this.source, this.target, this.damage, this.dtype);
