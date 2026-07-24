@@ -258,4 +258,35 @@ class GameMap {
     scatter('stone', 10, 4, 2);
     scatter('bush', 9, 6, 2);
   }
+
+  /**
+   * Purely decorative dressing — boulder outcrops on open ground and reeds
+   * along the shoreline. No gameplay effect, but it is most of what makes the
+   * map look like a place rather than a scatter plot of resources.
+   */
+  decorate(add) {
+    const rng = this.rng;
+    const T = CFG.TILE;
+    for (let i = 0; i < 70; i++) {
+      const x = rng.int(2, this.w - 3), y = rng.int(2, this.h - 3);
+      if (this.t(x, y) === TERRAIN.WATER) continue;
+      if (!this.grid.isFree(x, y)) continue;
+      // keep the build area around each start clear of clutter
+      if (this.starts.some(st => Math.abs(st.x - x) < 9 && Math.abs(st.y - y) < 9)) continue;
+      const big = rng.chance(0.35);
+      add({ kind: 'rocks', x: (x + rng()) * T, y: (y + rng()) * T,
+            seed: (x * 7919 + y * 104729) >>> 0, r: big ? 9 : 5.5, big });
+    }
+    for (let y = 1; y < this.h - 1; y++) {
+      for (let x = 1; x < this.w - 1; x++) {
+        if (this.t(x, y) === TERRAIN.WATER) continue;
+        let touchesWater = false;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+          if (this.t(x + dx, y + dy) === TERRAIN.WATER) { touchesWater = true; break; }
+        if (!touchesWater || !rng.chance(0.3)) continue;
+        add({ kind: 'reeds', x: (x + rng()) * T, y: (y + rng()) * T,
+              seed: (x * 31 + y * 17) >>> 0 });
+      }
+    }
+  }
 }

@@ -25,35 +25,57 @@ const PAL = {
   waterDeep:  '#3b78aa',
   waterFoam:  '#8dc0e0',
 
-  wall:       '#d8b483',
-  wallDark:   '#b38f61',
+  wall:       '#dcb684',
+  wallDark:   '#b8925f',
   beam:       '#8a6740',
-  roof:       '#a96b3d',
-  roofDark:   '#7d4c2b',
+  roof:       '#c0904f',
+  roofDark:   '#9a6f3a',
   stone:      '#b9b3a6',
   stoneDark:  '#948d80',
   door:       '#75482a',
 
-  pine:       '#3c7f43',
-  pineDark:   '#2c6234',
-  pineLight:  '#4f9a52',
-  trunk:      '#6b4a2a',
+  pine:       '#4e8f3e',
+  pineDark:   '#33612b',
+  pineLight:  '#63a64e',
+  bush:       '#5d9b46',
+  bushDark:   '#3f7333',
+  tuft:       '#5f9440',
+  reed:       '#6aa34a',
+  trunk:      '#8a6239',
+  trunkDark:  '#6b4a2a',
+  logEnd:     '#d8b184',
+
+  steel:      '#b9bec8',
+  steelLight: '#e2e6ec',
+  steelDark:  '#8f959f',
+  haft:       '#8a5f36',
+  bow:        '#7a5027',
+  sack:       '#7a6039',
 
   gold:       '#f2c318',
   goldDark:   '#c99a0e',
   goldLight:  '#ffe98a',
 
-  rock:       '#bdb8ac',
-  rockDark:   '#948f83',
-  rockLight:  '#d8d4ca',
+  rock:       '#aeaaa1',
+  rockDark:   '#7c7871',
+  rockLight:  '#d2cec6',
+  rockLine:   '#5d5a54',
 
   berry:      '#cc3b30',
   crop:       '#8fb552',
-  soil:       '#9c7448',
-  soilDark:   '#7d5c37',
+  soil:       '#c2a06a',
+  soilDark:   '#9d7c4c',
 };
 
 /* --------------------------------------------------------------- helpers */
+
+/** Contact shadow at an explicit iso position. */
+function groundShadow2(ctx, x, y, rx, ry, alpha) {
+  ctx.fillStyle = `rgba(30,45,20,${alpha === undefined ? 0.22 : alpha})`;
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx, ry, 0, 0, TAU);
+  ctx.fill();
+}
 
 /** Soft contact shadow on the ground under an object. */
 function groundShadow(ctx, rx, ry, alpha) {
@@ -227,13 +249,61 @@ function renderTerrain(map) {
   return cv;
 }
 
+/* ------------------------------------------------------- sprite dispatch */
+
+/**
+ * Which atlas sprite represents an entity. Several game types share one piece
+ * of art on purpose: every infantry tier is the same soldier, and a villager's
+ * sprite depends on the job it is doing rather than its unit type.
+ */
+const SPRITE_FOR_LINE = {
+  infantry: 'u.soldier', spear: 'u.spearman', archer: 'u.archer', cavalry: 'u.knight',
+};
+
+function unitSpriteName(u) {
+  if (u.def.role === 'worker') {
+    const tool = villagerTool(u);
+    if (tool === 'pick') return 'u.miner';
+    if (tool === 'axe') return 'u.lumberjack';
+    if (tool === 'fork') return 'u.farmer';
+    return 'u.villager';
+  }
+  return SPRITE_FOR_LINE[u.def.line] || ('u.' + u.type);
+}
+
+/** World-pixel width a sprite should occupy, so art lines up with footprints. */
+function buildingSpriteWidth(def) {
+  // the projected footprint diamond, plus a little overhang for eaves
+  return (def.w + def.h) * CFG.TILE * 0.5 * 1.12;
+}
+
 /* =============================================================== RESOURCES */
+
+/**
+ * Silhouette-first drawing: lay the shape down once in the dark outline colour
+ * scaled up a touch, then the fill on top. That gives a clean outline around
+ * the whole cluster instead of a stroke around every overlapping blob.
+ */
+function outlined(ctx, draw, fill, outline, grow) {
+  ctx.save();
+  ctx.fillStyle = outline;
+  ctx.beginPath(); draw(grow === undefined ? 1.14 : grow); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = fill;
+  ctx.beginPath(); draw(1); ctx.fill();
+}
 
 function drawResource(ctx, n, t) {
   const [ix, iy] = worldToIso(n.x, n.y);
+  const name = 'r.' + n.type;
+  if (Sprites.want(name)) {
+    // depleting nodes shrink a little so the player can read them at a glance
+    const k = n.maxAmount ? 0.72 + 0.28 * (n.amount / n.maxAmount) : 1;
+    Sprites.draw(ctx, name, ix, iy, 0, false, n.type === 'tree' ? 1 : k);
+    return;
+  }
   ctx.save();
   ctx.translate(ix, iy);
-
   switch (n.type) {
     case 'tree':  drawPine(ctx, n, t); break;
     case 'bush':  drawBerryBush(ctx, n); break;
@@ -243,179 +313,391 @@ function drawResource(ctx, n, t) {
   ctx.restore();
 }
 
+/** A single scalloped conifer, as on the asset sheet. */
 function drawPine(ctx, n, t) {
   const s = n.seed;
-  const scale = 0.85 + hashNoise(s, 3) * 0.45;
-  const h = 46 * scale;
-  const r = 15 * scale;
-  const sway = Math.sin(t * 0.7 + (s % 10)) * 0.9;
+  const k = 0.88 + hashNoise(s, 3) * 0.4;
+  const H = 52 * k, R = 15 * k;
+  const sway = Math.sin(t * 0.7 + (s % 10)) * 0.8;
 
-  groundShadow(ctx, r * 1.05, r * 0.5, 0.24);
+  groundShadow(ctx, R * 1.15, R * 0.52, 0.26);
 
-  // Short trunk, fully tucked under the lowest skirt. A longer one pokes out
-  // beneath the tree in front of it and reads as a bare post in dense forest.
+  // trunk
+  ctx.fillStyle = PAL.trunkDark;
+  ctx.fillRect(-3.4 * k, -10 * k, 6.8 * k, 11 * k);
   ctx.fillStyle = PAL.trunk;
-  ctx.fillRect(-2.5 * scale, -7 * scale, 5 * scale, 9 * scale);
+  ctx.fillRect(-3.4 * k, -10 * k, 4 * k, 11 * k);
 
-  // three stacked skirts of needles
-  const tiers = 3;
-  for (let i = 0; i < tiers; i++) {
-    const f = i / tiers;
-    const cz = 3.5 * scale + f * h * 0.8;
-    const rr = r * (1 - f * 0.6);
-    const tipZ = cz + h * 0.42;
-    ctx.fillStyle = i === 0 ? PAL.pineDark : (i === 1 ? PAL.pine : PAL.pineLight);
-    ctx.beginPath();
-    // a squat cone: elliptical skirt plus an apex
-    const cy = -cz;
-    ctx.ellipse(sway * f, cy, rr, rr * 0.5, 0, 0, Math.PI, true);
-    ctx.lineTo(sway * (f + 0.5), -tipZ);
+  // Scalloped cone: four skirts whose tips step outward toward the base.
+  const TIERS = 4;
+  const cone = (g) => {
+    const h = H * g, r = R * g;
+    ctx.moveTo(sway, -h - 3 * k);
+    for (let i = 1; i <= TIERS; i++) {          // right side, apex to base
+      const f = i / TIERS;
+      const y = -h * (1 - f) - 5 * k;
+      ctx.lineTo(r * f * 0.58, y - h * 0.1);
+      ctx.lineTo(r * f, y);
+    }
+    ctx.lineTo(r * 0.72, -2 * k);               // base
+    ctx.lineTo(-r * 0.72, -2 * k);
+    for (let i = TIERS; i >= 1; i--) {          // left side, base to apex
+      const f = i / TIERS;
+      const y = -h * (1 - f) - 5 * k;
+      ctx.lineTo(-r * f, y);
+      ctx.lineTo(-r * f * 0.58, y - h * 0.1);
+    }
     ctx.closePath();
-    ctx.fill();
-    // lit left edge
-    ctx.fillStyle = 'rgba(255,255,255,0.10)';
-    ctx.beginPath();
-    ctx.moveTo(sway * (f + 0.5), -tipZ);
-    ctx.lineTo(-rr, cy);
-    ctx.lineTo(-rr * 0.35, cy - rr * 0.16);
-    ctx.closePath();
-    ctx.fill();
-  }
+  };
+  outlined(ctx, cone, PAL.pine, PAL.pineDark, 1.09);
+
+  // sunlit left flank
+  ctx.fillStyle = 'rgba(255,255,255,0.13)';
+  ctx.beginPath();
+  ctx.moveTo(sway, -H - 3 * k);
+  ctx.lineTo(-R * 0.72, -2 * k);
+  ctx.lineTo(-R * 0.24, -2 * k);
+  ctx.closePath();
+  ctx.fill();
 }
 
+/** Rounded blob cluster; berries mark how much food is left. */
 function drawBerryBush(ctx, n) {
   const s = n.seed;
   const frac = n.amount / n.maxAmount;
-  groundShadow(ctx, 15, 7, 0.2);
+  groundShadow(ctx, 16, 7, 0.24);
 
-  ctx.fillStyle = PAL.pineDark;
-  ctx.beginPath();
-  ctx.ellipse(-6, -8, 9, 8, 0, 0, TAU);
-  ctx.ellipse(6, -7, 9, 8, 0, 0, TAU);
-  ctx.ellipse(0, -14, 9.5, 8.5, 0, 0, TAU);
-  ctx.fill();
-  ctx.fillStyle = PAL.pine;
-  ctx.beginPath();
-  ctx.ellipse(-5, -10, 7, 6, 0, 0, TAU);
-  ctx.ellipse(5, -9, 7, 6, 0, 0, TAU);
-  ctx.ellipse(0, -15, 7.5, 6.5, 0, 0, TAU);
-  ctx.fill();
+  const blobs = [[-7, -7, 8], [7, -6, 8], [0, -13, 8.5], [-2, -4, 7.5]];
+  const shape = (g) => {
+    for (const [bx, by, br] of blobs) {
+      ctx.moveTo(bx * g + br * g, by * g);
+      ctx.arc(bx * g, by * g, br * g, 0, TAU);
+    }
+  };
+  outlined(ctx, shape, PAL.bush, PAL.bushDark, 1.16);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.14)';
+  ctx.beginPath(); ctx.arc(-5, -13, 4.5, 0, TAU); ctx.fill();
 
   ctx.fillStyle = PAL.berry;
-  const count = Math.max(1, Math.round(8 * frac));
+  const count = Math.max(1, Math.round(7 * frac));
   for (let i = 0; i < count; i++) {
-    const bx = (hashNoise(s + i, 3) - 0.5) * 22;
-    const by = -8 - hashNoise(s, i + 9) * 12;
-    ctx.beginPath();
-    ctx.arc(bx, by, 2.2, 0, TAU);
-    ctx.fill();
+    const bx = (hashNoise(s + i, 3) - 0.5) * 20;
+    const by = -6 - hashNoise(s, i + 9) * 12;
+    ctx.beginPath(); ctx.arc(bx, by, 2.1, 0, TAU); ctx.fill();
+  }
+}
+
+/** One faceted boulder: outlined silhouette, mid body, lit top plane. */
+function boulder(ctx, x, y, r, tint) {
+  const base = tint || PAL.rock;
+  ctx.fillStyle = PAL.rockDark;
+  ctx.strokeStyle = PAL.rockLine;
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x - r, y);
+  ctx.lineTo(x - r * 0.75, y - r * 0.95);
+  ctx.lineTo(x + r * 0.7, y - r * 0.9);
+  ctx.lineTo(x + r, y);
+  ctx.lineTo(x + r * 0.5, y + r * 0.4);
+  ctx.lineTo(x - r * 0.55, y + r * 0.4);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle = base;
+  ctx.beginPath();
+  ctx.moveTo(x - r * 0.88, y - r * 0.08);
+  ctx.lineTo(x - r * 0.6, y - r * 0.88);
+  ctx.lineTo(x + r * 0.62, y - r * 0.84);
+  ctx.lineTo(x + r * 0.88, y - r * 0.06);
+  ctx.lineTo(x + r * 0.42, y + r * 0.3);
+  ctx.lineTo(x - r * 0.48, y + r * 0.3);
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = PAL.rockLight;
+  ctx.beginPath();
+  ctx.moveTo(x - r * 0.55, y - r * 0.82);
+  ctx.lineTo(x + r * 0.1, y - r * 1.0);
+  ctx.lineTo(x + r * 0.55, y - r * 0.76);
+  ctx.lineTo(x - r * 0.05, y - r * 0.6);
+  ctx.closePath(); ctx.fill();
+}
+
+/** Little grass tufts around the base of rocks, as on the sheet. */
+function baseTufts(ctx, seed, spread, count) {
+  ctx.strokeStyle = PAL.tuft;
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let i = 0; i < count; i++) {
+    const tx = (hashNoise(seed + i, 61) - 0.5) * spread;
+    const ty = (hashNoise(seed, i + 71) - 0.5) * spread * 0.42 + 2;
+    ctx.moveTo(tx, ty); ctx.lineTo(tx - 2.4, ty - 5);
+    ctx.moveTo(tx, ty); ctx.lineTo(tx + 0.4, ty - 6);
+    ctx.moveTo(tx, ty); ctx.lineTo(tx + 2.8, ty - 4.4);
+  }
+  ctx.stroke();
+}
+
+function rockMound(ctx, seed, frac, spread, gold) {
+  const rocks = [];
+  const count = Math.round(6 * frac) + 3;
+  for (let i = 0; i < count; i++) {
+    rocks.push({
+      x: (hashNoise(seed + i, 17) - 0.5) * spread * frac,
+      y: (hashNoise(seed, i + 23) - 0.5) * spread * 0.5 * frac,
+      r: (4.5 + hashNoise(seed + i, 7) * 4) * (0.7 + frac * 0.4),
+    });
+  }
+  rocks.sort((a, b) => a.y - b.y);
+  for (const r of rocks) boulder(ctx, r.x, r.y - r.r * 0.35, r.r);
+
+  if (gold) {
+    // nuggets bedded into the rock, gold on grey
+    const nug = Math.round(11 * frac) + 4;
+    for (let i = 0; i < nug; i++) {
+      const gx = (hashNoise(seed + i, 91) - 0.5) * spread * 0.85 * frac;
+      const gy = (hashNoise(seed, i + 97) - 0.5) * spread * 0.4 * frac - 3;
+      const gr = 3.6 + hashNoise(seed + i, 5) * 2.6;
+      ctx.fillStyle = PAL.goldDark;
+      ctx.beginPath();
+      ctx.moveTo(gx - gr, gy); ctx.lineTo(gx, gy + gr * 0.55);
+      ctx.lineTo(gx + gr, gy); ctx.lineTo(gx, gy - gr * 0.55);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = PAL.gold;
+      ctx.beginPath();
+      ctx.moveTo(gx - gr * 0.8, gy - gr * 0.1); ctx.lineTo(gx, gy + gr * 0.32);
+      ctx.lineTo(gx + gr * 0.8, gy - gr * 0.1); ctx.lineTo(gx, gy - gr * 0.5);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = PAL.goldLight;
+      ctx.beginPath();
+      ctx.moveTo(gx - gr * 0.4, gy - gr * 0.25); ctx.lineTo(gx + gr * 0.15, gy - gr * 0.05);
+      ctx.lineTo(gx + gr * 0.4, gy - gr * 0.3); ctx.lineTo(gx - gr * 0.1, gy - gr * 0.5);
+      ctx.closePath(); ctx.fill();
+    }
   }
 }
 
 function drawGoldPile(ctx, n) {
-  const s = n.seed;
-  const frac = 0.55 + 0.45 * (n.amount / n.maxAmount);
-  groundShadow(ctx, 17 * frac, 8 * frac, 0.22);
-
-  // a scatter of little iso ingots
-  const count = Math.round(7 * frac) + 2;
-  const bars = [];
-  for (let i = 0; i < count; i++) {
-    bars.push({
-      x: (hashNoise(s + i, 11) - 0.5) * 26 * frac,
-      y: (hashNoise(s, i + 5) - 0.5) * 26 * frac,
-      z: hashNoise(s + i * 3, 2) * 7 * frac,
-      w: 5 + hashNoise(s, i) * 3,
-    });
-  }
-  bars.sort((a, b) => (a.x + a.y) - (b.x + b.y));
-  for (const b of bars) {
-    box3(ctx, b.x - b.w, b.y - b.w * 0.6, b.z, b.x + b.w, b.y + b.w * 0.6, b.z + 4.5,
-      PAL.goldLight, PAL.gold, PAL.goldDark);
-  }
-  // a couple of rocky lumps for context
-  ctx.fillStyle = PAL.rockDark;
-  ctx.beginPath();
-  ctx.ellipse(-13, 4, 6, 3.4, 0, 0, TAU);
-  ctx.ellipse(12, -3, 5, 3, 0, 0, TAU);
-  ctx.fill();
+  const frac = 0.6 + 0.4 * (n.amount / n.maxAmount);
+  groundShadow(ctx, 20 * frac, 9 * frac, 0.24);
+  rockMound(ctx, n.seed, frac, 30, true);
+  baseTufts(ctx, n.seed, 34, 3);
 }
 
 function drawStonePile(ctx, n) {
-  const s = n.seed;
-  const frac = 0.55 + 0.45 * (n.amount / n.maxAmount);
-  groundShadow(ctx, 18 * frac, 9 * frac, 0.22);
-
-  const count = Math.round(5 * frac) + 2;
-  const rocks = [];
-  for (let i = 0; i < count; i++) {
-    rocks.push({
-      x: (hashNoise(s + i, 17) - 0.5) * 28 * frac,
-      y: (hashNoise(s, i + 23) - 0.5) * 28 * frac,
-      r: (4.5 + hashNoise(s + i, 7) * 4.5) * frac,
-    });
-  }
-  rocks.sort((a, b) => (a.x + a.y) - (b.x + b.y));
-  for (const r of rocks) {
-    const [px, py] = worldToIso(r.x, r.y);
-    // boulder: dark base + lit cap
-    ctx.fillStyle = PAL.rockDark;
-    ctx.beginPath();
-    ctx.ellipse(px, py - r.r * 0.5, r.r * 1.15, r.r * 0.95, 0, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = PAL.rock;
-    ctx.beginPath();
-    ctx.ellipse(px, py - r.r * 0.75, r.r, r.r * 0.8, 0, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = PAL.rockLight;
-    ctx.beginPath();
-    ctx.ellipse(px - r.r * 0.25, py - r.r * 1.05, r.r * 0.55, r.r * 0.4, 0, 0, TAU);
-    ctx.fill();
-  }
+  const frac = 0.6 + 0.4 * (n.amount / n.maxAmount);
+  groundShadow(ctx, 20 * frac, 9 * frac, 0.24);
+  rockMound(ctx, n.seed, frac, 30, false);
+  baseTufts(ctx, n.seed + 3, 34, 3);
 }
+
+/* ------------------------------------------------------------------ decor */
+
+/**
+ * Ground dressing never animates, so each piece is rendered once into a small
+ * sprite and blitted thereafter. With a couple of hundred rock clusters on a
+ * revealed map that is the difference between a few milliseconds and a few
+ * tenths of one.
+ */
+const DECOR_BOX = {
+  rocks: (d) => [d.r * 3.2, d.r * 2.6, d.r * 1.4],
+  stump: () => [14, 16, 8],
+  reeds: () => [24, 24, 4],
+  rubble: (d) => [d.r * 1.6, d.r * 1.4, d.r * 0.8],
+  bones: () => [12, 10, 6],
+};
+
+const DECOR_SPRITE = { stump: 'd.stump', reeds: 'd.reeds' };
 
 function drawDecor(ctx, d) {
   const [ix, iy] = worldToIso(d.x, d.y);
+
+  const name = d.kind === 'rocks' ? (d.big ? 'd.rocks.big' : 'd.rocks.small')
+             : DECOR_SPRITE[d.kind];
+  if (name && Sprites.want(name)) {
+    Sprites.draw(ctx, name, ix, iy, 0, (d.seed & 1) === 1, 1);
+    return;
+  }
+
+  if (!d._sprite) {
+    const SS = 2;                       // supersample so it stays crisp zoomed in
+    const box = (DECOR_BOX[d.kind] || DECOR_BOX.bones)(d);
+    const w = Math.ceil(box[0] * 2) + 8, h = Math.ceil(box[1] + box[2]) + 12;
+    const cv = document.createElement('canvas');
+    cv.width = w * SS; cv.height = h * SS;
+    const c = cv.getContext('2d');
+    c.scale(SS, SS);
+    c.translate(w / 2, h - box[2] - 6);
+    drawDecorRaw(c, d);
+    d._sprite = cv;
+    d._sw = w; d._sh = h;
+    d._ox = w / 2;
+    d._oy = h - box[2] - 6;
+  }
+  ctx.drawImage(d._sprite, ix - d._ox, iy - d._oy, d._sw, d._sh);
+}
+
+function drawDecorRaw(ctx, d) {
   ctx.save();
-  ctx.translate(ix, iy);
-  if (d.kind === 'stump') {
-    ctx.fillStyle = PAL.trunk;
-    ctx.beginPath(); ctx.ellipse(0, -2, 6, 3.4, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = shade(PAL.trunk, 0.25);
-    ctx.beginPath(); ctx.ellipse(0, -4, 5, 2.8, 0, 0, TAU); ctx.fill();
-  } else if (d.kind === 'rubble') {
-    ctx.fillStyle = 'rgba(120,110,95,0.75)';
-    for (let i = 0; i < 8; i++) {
-      const a = hashNoise(d.seed, i) * TAU;
-      const rr = hashNoise(d.seed + 5, i) * d.r;
-      const [px, py] = worldToIso(Math.cos(a) * rr, Math.sin(a) * rr);
-      ctx.beginPath();
-      ctx.ellipse(px, py, 4 + hashNoise(d.seed, i + 2) * 4, 3, 0, 0, TAU);
-      ctx.fill();
+  switch (d.kind) {
+    case 'stump': {
+      // cut stump with pale end grain, plus a couple of chips
+      ctx.fillStyle = PAL.trunkDark;
+      ctx.beginPath(); ctx.ellipse(0, -3, 7, 4.4, 0, 0, TAU); ctx.fill();
+      ctx.fillRect(-7, -6, 14, 4);
+      ctx.fillStyle = PAL.logEnd;
+      ctx.beginPath(); ctx.ellipse(0, -6, 7, 4.2, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = PAL.trunk;
+      ctx.beginPath(); ctx.ellipse(0, -6, 3.4, 2, 0, 0, TAU); ctx.fill();
+      break;
     }
-  } else if (d.kind === 'bones') {
-    ctx.fillStyle = 'rgba(40,40,40,0.35)';
-    ctx.beginPath();
-    ctx.ellipse(0, -1, 7, 3.2, 0.4, 0, TAU);
-    ctx.fill();
+    case 'rocks': {
+      groundShadow(ctx, d.r * 1.2, d.r * 0.55, 0.22);
+      const n = d.big ? 5 : 3;
+      const rocks = [];
+      for (let i = 0; i < n; i++) {
+        rocks.push({
+          x: (hashNoise(d.seed + i, 13) - 0.5) * d.r * 1.9,
+          y: (hashNoise(d.seed, i + 29) - 0.5) * d.r * 0.9,
+          r: d.r * (0.42 + hashNoise(d.seed + i, 41) * 0.5),
+        });
+      }
+      rocks.sort((a, b) => a.y - b.y);
+      for (const r of rocks) boulder(ctx, r.x, r.y - r.r * 0.4, r.r);
+      baseTufts(ctx, d.seed, d.r * 2.4, d.big ? 4 : 2);
+      break;
+    }
+    case 'reeds': {
+      ctx.strokeStyle = PAL.reed;
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const rx = (hashNoise(d.seed + i, 3) - 0.5) * 16;
+        const hgt = 9 + hashNoise(d.seed, i) * 9;
+        ctx.moveTo(rx, 1);
+        ctx.quadraticCurveTo(rx + 1.5, 1 - hgt * 0.6, rx + 4, 1 - hgt);
+      }
+      ctx.stroke();
+      break;
+    }
+    case 'rubble': {
+      ctx.fillStyle = 'rgba(120,110,95,0.75)';
+      for (let i = 0; i < 8; i++) {
+        const a = hashNoise(d.seed, i) * TAU;
+        const rr = hashNoise(d.seed + 5, i) * d.r;
+        const [px, py] = worldToIso(Math.cos(a) * rr, Math.sin(a) * rr);
+        ctx.beginPath();
+        ctx.ellipse(px, py, 4 + hashNoise(d.seed, i + 2) * 4, 3, 0, 0, TAU);
+        ctx.fill();
+      }
+      break;
+    }
+    case 'bones': {
+      ctx.fillStyle = 'rgba(40,40,40,0.32)';
+      ctx.beginPath(); ctx.ellipse(0, -1, 7, 3.2, 0.4, 0, TAU); ctx.fill();
+      break;
+    }
   }
   ctx.restore();
 }
 
 /* =================================================================== UNITS */
 
+/** Round shield: steel rim, coloured field, bright central boss. */
+function roundShield(ctx, x, y, r, col) {
+  ctx.fillStyle = PAL.steelDark;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+  ctx.fillStyle = col.fill;
+  ctx.beginPath(); ctx.arc(x, y, r * 0.76, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath(); ctx.arc(x - r * 0.22, y - r * 0.24, r * 0.42, 0, TAU); ctx.fill();
+  ctx.fillStyle = PAL.steelLight;
+  ctx.beginPath(); ctx.arc(x, y, r * 0.2, 0, TAU); ctx.fill();
+}
+
 /**
- * Solid black silhouette, standing upright on the ground plane. The player's
- * colour rides on the gear — shield, bow, tabard — the way the reference art
- * does, so the figures stay unmistakably stick-people.
+ * A long-handled tool carried across the body, head up and to the left —
+ * the pose the villager variants use on the asset sheet.
  */
+function carriedTool(ctx, kind, ink) {
+  const bx = 7, by = -11, tx = -6, ty = -43;      // butt and head of the haft
+  ctx.strokeStyle = PAL.haft;
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(tx, ty); ctx.stroke();
+
+  const ang = Math.atan2(ty - by, tx - bx);
+  ctx.save();
+  ctx.translate(tx, ty);
+  ctx.rotate(ang + Math.PI / 2);
+
+  if (kind === 'pick') {
+    ctx.strokeStyle = PAL.steel;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(-6, 2); ctx.quadraticCurveTo(0, -3.5, 6, 1.5);
+    ctx.stroke();
+  } else if (kind === 'axe') {
+    ctx.fillStyle = PAL.steel;
+    ctx.beginPath();
+    ctx.moveTo(0, 3); ctx.lineTo(-0.5, -1.5);
+    ctx.quadraticCurveTo(5, -3.5, 6.5, 2);
+    ctx.quadraticCurveTo(3.5, 5, 0, 4);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = PAL.steelLight;
+    ctx.beginPath();
+    ctx.moveTo(3.6, -2); ctx.quadraticCurveTo(6, -1.6, 6.5, 2);
+    ctx.quadraticCurveTo(4.6, 2.4, 3.8, 0.6);
+    ctx.closePath(); ctx.fill();
+  } else if (kind === 'fork') {
+    ctx.strokeStyle = PAL.steel;
+    ctx.lineWidth = 1.7;
+    ctx.beginPath();
+    ctx.moveTo(-3.6, 2.5); ctx.lineTo(-3.6, -4);
+    ctx.moveTo(0, 3); ctx.lineTo(0, -4.8);
+    ctx.moveTo(3.6, 2.5); ctx.lineTo(3.6, -4);
+    ctx.moveTo(-4.2, 2.5); ctx.lineTo(4.2, 2.5);
+    ctx.stroke();
+  } else if (kind === 'hammer') {
+    ctx.fillStyle = PAL.steel;
+    ctx.fillRect(-2.6, -2.4, 5.2, 6);
+    ctx.fillStyle = PAL.steelLight;
+    ctx.fillRect(-2.6, -2.4, 5.2, 2);
+  }
+  ctx.restore();
+  ctx.strokeStyle = ink;
+}
+
 function drawUnit(ctx, u, col) {
   const [ix, iy] = worldToIso(u.x, u.y);
+  const base = unitSpriteName(u);
+  const frame = base + '.f' + Sprites.unitFrame(u);
+  if (Sprites.want(frame)) {
+    // the sprite carries its own shadow, so none is drawn here
+    const sdx = Math.cos(u.facing) - Math.sin(u.facing);
+    if (u.deathT !== undefined) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - Math.min(1, u.deathT / 1.6) * 0.9);
+    }
+    Sprites.draw(ctx, frame, ix, iy, u.owner, sdx < 0, 1);
+    if (u.hitFlash > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = u.hitFlash * 2.4;
+      Sprites.draw(ctx, frame, ix, iy, u.owner, sdx < 0, 1);
+      ctx.restore();
+    }
+    if (u.deathT !== undefined) ctx.restore();
+    if (u.carry && u.carry.amount > 0.5) drawCarryIcon(ctx, ix + 10, iy - 34, u.carry.type);
+    return;
+  }
   ctx.save();
   ctx.translate(ix, iy);
 
   const horse = u.def.art === 'horse';
-  groundShadow(ctx, horse ? 15 : 8, horse ? 6.5 : 3.6, 0.26);
+  groundShadow(ctx, horse ? 16 : 9, horse ? 7 : 4, 0.3);
 
   if (u.deathT !== undefined) {
     const p = Math.min(1, u.deathT / 0.7);
@@ -424,279 +706,241 @@ function drawUnit(ctx, u, col) {
     ctx.translate(0, p * 3);
   }
 
-  // Face left or right depending on travel direction in screen space.
+  // face left or right by travel direction in screen space
   const sdx = Math.cos(u.facing) - Math.sin(u.facing);
-  const dir = sdx >= 0 ? 1 : -1;
-  ctx.scale(dir, 1);
+  ctx.scale(sdx >= 0 ? 1 : -1, 1);
 
   const moving = !!(u.path && u.path.length);
   const ph = moving ? u.walkPhase
     : (u.state === 'gather' || u.state === 'build' ? u.anim * 6 : 0);
-  const swing = moving ? Math.sin(ph) * 0.55 : 0;
+  const swing = moving ? Math.sin(ph) * 0.5 : 0;
   const bob = moving ? Math.abs(Math.sin(ph)) * 1.1 : Math.sin(u.anim * 1.6) * 0.3;
 
-  ctx.strokeStyle = u.hitFlash > 0 ? '#d63a2a' : INK;
-  ctx.fillStyle = u.hitFlash > 0 ? '#d63a2a' : INK;
+  const ink = u.hitFlash > 0 ? '#d63a2a' : INK;
+  ctx.strokeStyle = ink;
+  ctx.fillStyle = ink;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
   if (horse) drawRider(ctx, u, col, ph, moving);
-  else drawWalker(ctx, u, col, swing, bob);
+  else drawWalker(ctx, u, col, swing, bob, ink);
 
   ctx.restore();
 
-  if (u.carry && u.carry.amount > 0.5) {
-    drawCarryIcon(ctx, ix + 9, iy - 32, u.carry.type);
-  }
+  if (u.carry && u.carry.amount > 0.5) drawCarryIcon(ctx, ix + 10, iy - 38, u.carry.type);
 }
 
-function drawWalker(ctx, u, col, swing, bob) {
-  const FOOT = 0, HIP = -14 - bob, SHO = -25 - bob, HEAD = -31.5 - bob;
+/** Which tool a villager should be holding, from what it is currently doing. */
+function villagerTool(u) {
+  if (u.state === 'build') return 'hammer';
+  const t = u.target;
+  if (t && t.kind === 'building' && t.def && t.def.farmFood) return 'fork';
+  const res = (t && t.resType) || (u.carry && u.carry.type);
+  if (res === 'wood') return 'axe';
+  if (res === 'gold' || res === 'stone') return 'pick';
+  if (u.state === 'gather') return 'fork';
+  return null;
+}
+
+function drawWalker(ctx, u, col, swing, bob, ink) {
+  const HIP = -17 - bob, SHO = -30 - bob, HEAD = -37.5 - bob;
   const art = u.def.art;
 
   // legs
-  ctx.lineWidth = 3.1;
+  ctx.lineWidth = 3.4;
   ctx.beginPath();
-  ctx.moveTo(0, HIP); ctx.lineTo(Math.sin(swing) * 6.5, FOOT);
-  ctx.moveTo(0, HIP); ctx.lineTo(Math.sin(-swing) * 6.5, FOOT);
+  ctx.moveTo(0, HIP); ctx.lineTo(Math.sin(swing) * 6.5, 0);
+  ctx.moveTo(0, HIP); ctx.lineTo(Math.sin(-swing) * 6.5, 0);
   ctx.stroke();
 
-  // torso — slightly tapered so it reads as a body, not a stick
+  // tapered torso
   ctx.beginPath();
-  ctx.moveTo(-2.6, SHO); ctx.lineTo(2.6, SHO);
-  ctx.lineTo(1.9, HIP); ctx.lineTo(-1.9, HIP);
+  ctx.moveTo(-3.4, SHO); ctx.lineTo(3.4, SHO);
+  ctx.lineTo(2.2, HIP); ctx.lineTo(-2.2, HIP);
   ctx.closePath();
   ctx.fill();
 
   // head
   ctx.beginPath();
-  ctx.arc(0, HEAD, 4.6, 0, TAU);
+  ctx.arc(0, HEAD, 5.2, 0, TAU);
   ctx.fill();
 
-  const c = col.fill, cDark = col.ink;
+  const arm = (x1, y1, x2, y2) => {
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  };
 
   switch (art) {
     case 'villager': {
-      // tabard patch keeps the two sides apart at a glance
-      ctx.fillStyle = c;
-      ctx.fillRect(-2.2, SHO + 3, 4.4, 5.5);
-      ctx.fillStyle = u.hitFlash > 0 ? '#d63a2a' : INK;
-
-      const work = (u.state === 'gather' || u.state === 'build') ? Math.sin(u.anim * 7) : 0;
-      const a = -0.45 + work * 0.85;
-      const hx = Math.cos(a) * 11, hy = SHO + 2 + Math.sin(a) * 11;
-      ctx.lineWidth = 2.8;
-      ctx.beginPath();
-      ctx.moveTo(0, SHO + 2); ctx.lineTo(hx, hy);
-      ctx.moveTo(0, SHO + 2); ctx.lineTo(-6.5, SHO + 10);
-      ctx.stroke();
-
-      const ct = u.carry && u.carry.type;
-      if (u.state === 'build') drawTool(ctx, hx, hy, a, 'hammer');
-      else if (ct === 'wood') drawTool(ctx, hx, hy, a, 'axe');
-      else if (ct === 'gold' || ct === 'stone') drawTool(ctx, hx, hy, a, 'pick');
-      else if (u.state === 'gather') drawTool(ctx, hx, hy, a, 'basket');
-
+      const tool = villagerTool(u);
+      if (tool) {
+        // both hands on the haft
+        arm(0, SHO + 2, 5, SHO + 6);
+        arm(0, SHO + 2, -3, SHO - 4);
+        carriedTool(ctx, tool, ink);
+      } else {
+        const work = (u.state === 'gather') ? Math.sin(u.anim * 7) * 0.5 : 0;
+        arm(0, SHO + 2, 7, SHO + 11 + work * 4);
+        arm(0, SHO + 2, -7, SHO + 11 - work * 4);
+      }
       if (u.carry && u.carry.amount > 3) {
-        ctx.fillStyle = '#6a5537';
-        ctx.beginPath(); ctx.arc(-6.5, SHO + 3, 4, 0, TAU); ctx.fill();
-        ctx.fillStyle = u.hitFlash > 0 ? '#d63a2a' : INK;
+        ctx.fillStyle = PAL.sack;
+        ctx.beginPath(); ctx.arc(-7, SHO + 4, 4.2, 0, TAU); ctx.fill();
+        ctx.fillStyle = ink;
       }
       break;
     }
 
     case 'sword': {
-      // shield arm
-      ctx.lineWidth = 2.8;
-      ctx.beginPath(); ctx.moveTo(0, SHO + 2); ctx.lineTo(-7, SHO + 7); ctx.stroke();
-      kiteShield(ctx, -9, SHO + 8, 1.0, c, cDark);
-      // sword arm
-      const a = -0.3 - u.swing * 1.5;
+      arm(0, SHO + 2, -7, SHO + 8);
+      roundShield(ctx, -10, SHO + 10, 7.5, col);
+      // sword arm, raised and swinging on attack
+      const a = -1.15 - u.swing * 0.9;
       const hx = Math.cos(a) * 10, hy = SHO + 2 + Math.sin(a) * 10;
-      ctx.strokeStyle = u.hitFlash > 0 ? '#d63a2a' : INK;
-      ctx.beginPath(); ctx.moveTo(0, SHO + 2); ctx.lineTo(hx, hy); ctx.stroke();
-      const ba = a - 0.5 + u.swing * 1.3;
-      ctx.strokeStyle = '#c9ccd2'; ctx.lineWidth = 2.8;
+      ctx.strokeStyle = ink;
+      arm(0, SHO + 2, hx, hy);
+      const ba = a - 0.15 + u.swing * 1.5;
+      ctx.strokeStyle = PAL.steel; ctx.lineWidth = 3.4;
       ctx.beginPath();
       ctx.moveTo(hx, hy);
-      ctx.lineTo(hx + Math.cos(ba) * 16, hy + Math.sin(ba) * 16);
+      ctx.lineTo(hx + Math.cos(ba) * 19, hy + Math.sin(ba) * 19);
       ctx.stroke();
-      ctx.strokeStyle = INK; ctx.lineWidth = 2;
+      ctx.strokeStyle = PAL.steelLight; ctx.lineWidth = 1.3;
       ctx.beginPath();
-      ctx.moveTo(hx + Math.cos(ba + 1.57) * 3.5, hy + Math.sin(ba + 1.57) * 3.5);
-      ctx.lineTo(hx - Math.cos(ba + 1.57) * 3.5, hy - Math.sin(ba + 1.57) * 3.5);
+      ctx.moveTo(hx + Math.cos(ba) * 4, hy + Math.sin(ba) * 4 - 1);
+      ctx.lineTo(hx + Math.cos(ba) * 17, hy + Math.sin(ba) * 17 - 1);
+      ctx.stroke();
+      ctx.strokeStyle = ink; ctx.lineWidth = 2.4;   // crossguard
+      ctx.beginPath();
+      ctx.moveTo(hx + Math.cos(ba + 1.57) * 4, hy + Math.sin(ba + 1.57) * 4);
+      ctx.lineTo(hx - Math.cos(ba + 1.57) * 4, hy - Math.sin(ba + 1.57) * 4);
       ctx.stroke();
       break;
     }
 
     case 'spear': {
-      ctx.lineWidth = 2.8;
-      ctx.beginPath(); ctx.moveTo(0, SHO + 2); ctx.lineTo(-7, SHO + 7); ctx.stroke();
-      kiteShield(ctx, -9.5, SHO + 8, 1.05, c, cDark);
+      arm(0, SHO + 2, -7, SHO + 8);
+      roundShield(ctx, -10, SHO + 10, 7.5, col);
+      arm(0, SHO + 2, 7, SHO + 4);
+      const th = u.swing * 7;
+      ctx.strokeStyle = PAL.haft; ctx.lineWidth = 2.8;
       ctx.beginPath();
-      ctx.moveTo(0, SHO + 2); ctx.lineTo(7, SHO + 5);
+      ctx.moveTo(7 + th * 0.4, SHO + 18); ctx.lineTo(7 + th, SHO - 28);
       ctx.stroke();
-      // upright spear with a little forward thrust on attack
-      const th = u.swing * 6;
-      ctx.strokeStyle = '#6b5233'; ctx.lineWidth = 2.4;
+      ctx.fillStyle = PAL.steel;
       ctx.beginPath();
-      ctx.moveTo(7 + th, SHO + 14); ctx.lineTo(7 + th * 1.6, SHO - 24);
-      ctx.stroke();
-      ctx.fillStyle = '#c9ccd2';
-      ctx.beginPath();
-      ctx.moveTo(7 + th * 1.6, SHO - 31);
-      ctx.lineTo(4.4 + th * 1.6, SHO - 23);
-      ctx.lineTo(9.6 + th * 1.6, SHO - 23);
+      ctx.moveTo(7 + th, SHO - 36);
+      ctx.quadraticCurveTo(3.4 + th, SHO - 29, 7 + th, SHO - 26);
+      ctx.quadraticCurveTo(10.6 + th, SHO - 29, 7 + th, SHO - 36);
       ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = ink;
       break;
     }
 
     case 'bow': {
       const draw = u.swing;
-      ctx.lineWidth = 2.8;
+      // coloured tunic
+      ctx.fillStyle = col.fill;
       ctx.beginPath();
-      ctx.moveTo(0, SHO + 2); ctx.lineTo(10, SHO + 1);
-      ctx.moveTo(0, SHO + 2); ctx.lineTo(3 - draw * 4, SHO + 6);
-      ctx.stroke();
+      ctx.moveTo(-3.4, SHO + 5); ctx.lineTo(3.4, SHO + 5);
+      ctx.lineTo(2.4, HIP + 1); ctx.lineTo(-2.4, HIP + 1);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = ink;
       // quiver
-      ctx.strokeStyle = c; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.moveTo(-5, SHO); ctx.lineTo(-8, SHO + 9); ctx.stroke();
-      // bow limbs in player colour
-      ctx.strokeStyle = c; ctx.lineWidth = 2.6;
-      ctx.beginPath(); ctx.arc(11, SHO + 1, 10, -1.3, 1.3); ctx.stroke();
-      ctx.strokeStyle = cDark; ctx.lineWidth = 1.1;
-      const pull = 3 + draw * 5;
+      ctx.strokeStyle = PAL.haft; ctx.lineWidth = 4.5;
+      ctx.beginPath(); ctx.moveTo(-6, SHO); ctx.lineTo(-9, SHO + 10); ctx.stroke();
+      ctx.strokeStyle = ink;
+      arm(0, SHO + 2, 11, SHO + 1);
+      arm(0, SHO + 2, 4 - draw * 4, SHO + 6);
+      // recurve bow
+      ctx.strokeStyle = PAL.bow; ctx.lineWidth = 2.8;
+      ctx.beginPath(); ctx.arc(12, SHO + 1, 12, -1.35, 1.35); ctx.stroke();
+      ctx.strokeStyle = '#e8e2d0'; ctx.lineWidth = 1.1;
+      const pull = 3 + draw * 6;
+      const bx = 12 + Math.cos(-1.35) * 12, byTop = SHO + 1 + Math.sin(-1.35) * 12;
+      const byBot = SHO + 1 + Math.sin(1.35) * 12;
       ctx.beginPath();
-      ctx.moveTo(11 + Math.cos(-1.3) * 10, SHO + 1 + Math.sin(-1.3) * 10);
-      ctx.lineTo(11 - pull, SHO + 1);
-      ctx.lineTo(11 + Math.cos(1.3) * 10, SHO + 1 + Math.sin(1.3) * 10);
+      ctx.moveTo(bx, byTop); ctx.lineTo(12 - pull, SHO + 1); ctx.lineTo(bx, byBot);
       ctx.stroke();
-      if (draw > 0.15) {
-        ctx.strokeStyle = '#4a3a20'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(11 - pull, SHO + 1); ctx.lineTo(24, SHO + 1); ctx.stroke();
+      if (draw > 0.12) {
+        ctx.strokeStyle = PAL.haft; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(12 - pull, SHO + 1); ctx.lineTo(26, SHO + 1); ctx.stroke();
       }
+      ctx.strokeStyle = ink;
       break;
     }
   }
 }
 
-function kiteShield(ctx, x, y, s, c, cDark) {
-  ctx.fillStyle = c;
-  ctx.beginPath();
-  ctx.moveTo(x, y - 7 * s);
-  ctx.quadraticCurveTo(x + 6 * s, y - 6 * s, x + 5.5 * s, y + 1 * s);
-  ctx.quadraticCurveTo(x + 4.5 * s, y + 8 * s, x, y + 10 * s);
-  ctx.quadraticCurveTo(x - 4.5 * s, y + 8 * s, x - 5.5 * s, y + 1 * s);
-  ctx.quadraticCurveTo(x - 6 * s, y - 6 * s, x, y - 7 * s);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = cDark; ctx.lineWidth = 1.4;
-  ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.28)';
-  ctx.beginPath();
-  ctx.ellipse(x - 1.5 * s, y - 2 * s, 1.8 * s, 3 * s, 0, 0, TAU);
-  ctx.fill();
-}
-
-function drawTool(ctx, hx, hy, a, tool) {
-  ctx.save();
-  ctx.translate(hx, hy);
-  ctx.rotate(a);
-  ctx.lineCap = 'round';
-  if (tool === 'axe' || tool === 'pick' || tool === 'hammer') {
-    ctx.strokeStyle = '#6b4a2a'; ctx.lineWidth = 2.2;
-    ctx.beginPath(); ctx.moveTo(-2, 0); ctx.lineTo(11, 0); ctx.stroke();
-    ctx.fillStyle = '#b9bcc2';
-    if (tool === 'axe') {
-      ctx.beginPath();
-      ctx.moveTo(9, -1.5); ctx.lineTo(15, -6); ctx.lineTo(16, 2); ctx.lineTo(10, 2.5);
-      ctx.closePath(); ctx.fill();
-    } else if (tool === 'pick') {
-      ctx.strokeStyle = '#b9bcc2'; ctx.lineWidth = 2.4;
-      ctx.beginPath(); ctx.moveTo(6, -5.5); ctx.quadraticCurveTo(13, -3, 15, 3.5); ctx.stroke();
-    } else {
-      ctx.beginPath(); ctx.rect(8, -3.8, 6.5, 7.6); ctx.fill();
-    }
-  } else if (tool === 'basket') {
-    ctx.fillStyle = '#8a6a3a';
-    ctx.beginPath(); ctx.ellipse(8, 2, 4.2, 3.2, 0, 0, TAU); ctx.fill();
-  }
-  ctx.restore();
-}
-
 function drawRider(ctx, u, col, ph, moving) {
   const gait = moving ? Math.sin(ph * 0.85) : 0;
-  const back = -19 - Math.abs(gait) * 1.2;
-  const c = col.fill, cDark = col.ink;
+  const back = -21 - Math.abs(gait) * 1.2;
+  const ink = ctx.fillStyle;
 
-  // --- horse, solid black ---
-  ctx.fillStyle = ctx.strokeStyle;
-  ctx.lineWidth = 3.2;
+  ctx.lineWidth = 3.4;
   ctx.beginPath();
   const l1 = gait * 0.5, l2 = -gait * 0.5;
-  ctx.moveTo(-9, back + 8); ctx.lineTo(-9 + Math.sin(l1) * 7, 0);
-  ctx.moveTo(-5, back + 8); ctx.lineTo(-5 + Math.sin(l2) * 7, 0);
-  ctx.moveTo(8, back + 7); ctx.lineTo(8 + Math.sin(l2) * 7, 0);
-  ctx.moveTo(12, back + 7); ctx.lineTo(12 + Math.sin(l1) * 7, 0);
+  ctx.moveTo(-9, back + 9); ctx.lineTo(-9 + Math.sin(l1) * 7, 0);
+  ctx.moveTo(-5, back + 9); ctx.lineTo(-5 + Math.sin(l2) * 7, 0);
+  ctx.moveTo(8, back + 8); ctx.lineTo(8 + Math.sin(l2) * 7, 0);
+  ctx.moveTo(12, back + 8); ctx.lineTo(12 + Math.sin(l1) * 7, 0);
   ctx.stroke();
 
-  // barrel
   ctx.beginPath();
   ctx.moveTo(-13, back + 2);
   ctx.quadraticCurveTo(0, back - 4, 13, back);
-  ctx.lineTo(13, back + 8);
-  ctx.quadraticCurveTo(0, back + 12, -12, back + 9);
-  ctx.closePath();
-  ctx.fill();
+  ctx.lineTo(13, back + 9);
+  ctx.quadraticCurveTo(0, back + 13, -12, back + 10);
+  ctx.closePath(); ctx.fill();
 
-  // neck and head
   ctx.beginPath();
   ctx.moveTo(11, back - 1);
-  ctx.lineTo(19, back - 11);
-  ctx.lineTo(25, back - 10);
-  ctx.lineTo(24, back - 5.5);
+  ctx.lineTo(19, back - 12);
+  ctx.lineTo(26, back - 11);
+  ctx.lineTo(25, back - 6);
   ctx.lineTo(16, back - 3);
-  ctx.closePath();
-  ctx.fill();
-  // tail
-  ctx.lineWidth = 2.6;
+  ctx.closePath(); ctx.fill();
+
+  ctx.lineWidth = 2.8;
   ctx.beginPath();
   ctx.moveTo(-13, back + 2);
-  ctx.quadraticCurveTo(-20, back + 5 + gait * 2, -18, back + 14);
+  ctx.quadraticCurveTo(-21, back + 5 + gait * 2, -19, back + 15);
   ctx.stroke();
 
-  // caparison in player colour
-  ctx.fillStyle = c;
+  // caparison
+  ctx.fillStyle = col.fill;
   ctx.beginPath();
   ctx.moveTo(-6, back + 4); ctx.lineTo(6, back + 3);
-  ctx.lineTo(5, back + 12); ctx.lineTo(-5, back + 13);
+  ctx.lineTo(5, back + 13); ctx.lineTo(-5, back + 14);
   ctx.closePath(); ctx.fill();
+  ctx.fillStyle = ink;
 
-  // --- rider ---
-  ctx.fillStyle = ctx.strokeStyle;
-  const HIP = back - 3, SHO = HIP - 11, HEAD = SHO - 6.5;
+  const HIP = back - 3, SHO = HIP - 12, HEAD = SHO - 7;
+  ctx.lineWidth = 3.2;
+  ctx.beginPath();
+  ctx.moveTo(0, HIP); ctx.lineTo(6, HIP + 8); ctx.lineTo(5, HIP + 13);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-3, SHO); ctx.lineTo(3, SHO);
+  ctx.lineTo(2, HIP); ctx.lineTo(-2, HIP);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, HEAD, 4.8, 0, TAU); ctx.fill();
+
   ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(0, HIP); ctx.lineTo(6, HIP + 7); ctx.lineTo(5, HIP + 12);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(-2.4, SHO); ctx.lineTo(2.4, SHO);
-  ctx.lineTo(1.8, HIP); ctx.lineTo(-1.8, HIP);
-  ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.arc(0, HEAD, 4.3, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(0, SHO + 2); ctx.lineTo(-8, SHO + 7); ctx.stroke();
+  roundShield(ctx, -11, SHO + 9, 7, col);
 
-  kiteShield(ctx, -8, SHO + 5, 0.95, c, cDark);
-
-  const a = -0.45 - u.swing * 1.3;
-  const hx = Math.cos(a) * 9, hy = SHO + 1 + Math.sin(a) * 9;
-  ctx.lineWidth = 2.8;
-  ctx.beginPath(); ctx.moveTo(0, SHO + 1); ctx.lineTo(hx, hy); ctx.stroke();
-  ctx.strokeStyle = '#c9ccd2'; ctx.lineWidth = 2.8;
-  const ba = a - 0.3 + u.swing * 1.1;
+  const a = -1.1 - u.swing * 0.8;
+  const hx = Math.cos(a) * 9, hy = SHO + 2 + Math.sin(a) * 9;
+  ctx.strokeStyle = ink;
+  ctx.beginPath(); ctx.moveTo(0, SHO + 2); ctx.lineTo(hx, hy); ctx.stroke();
+  ctx.strokeStyle = PAL.steel; ctx.lineWidth = 3.4;
+  const ba = a - 0.1 + u.swing * 1.4;
   ctx.beginPath();
-  ctx.moveTo(hx - Math.cos(ba) * 5, hy - Math.sin(ba) * 5);
-  ctx.lineTo(hx + Math.cos(ba) * 17, hy + Math.sin(ba) * 17);
+  ctx.moveTo(hx, hy);
+  ctx.lineTo(hx + Math.cos(ba) * 19, hy + Math.sin(ba) * 19);
   ctx.stroke();
+  ctx.strokeStyle = ink;
 }
 
 const RES_ICON_COLORS = { food: '#c0392b', wood: '#8a6a3a', gold: '#d4af37', stone: '#9a9a9a' };
@@ -718,6 +962,11 @@ function drawCarryIcon(ctx, x, y, type) {
 
 function drawBuilding(ctx, b, col, time) {
   const [ix, iy] = worldToIso(b.x, b.y);
+  const name = 'b.' + b.type;
+  if (b.built && Sprites.want(name)) {
+    Sprites.draw(ctx, name, ix, iy, b.owner, false, 1);
+    return;
+  }
   ctx.save();
   ctx.translate(ix, iy);
 
@@ -760,132 +1009,211 @@ function drawBuilding(ctx, b, col, time) {
 }
 
 /** Timber walls with a plank line or two. */
+/** Timber walls with log courses on the two visible faces. */
 function timberBox(ctx, x0, y0, z0, x1, y1, z1, base) {
   base = base || PAL.wall;
   box3(ctx, x0, y0, z0, x1, y1, z1,
     shade(base, FACE_TOP), shade(base, FACE_LEFT), shade(base, FACE_RIGHT));
-  // plank seams on the two visible walls
-  const rows = Math.max(1, Math.round((z1 - z0) / 9));
+  const rows = Math.max(1, Math.round((z1 - z0) / 7));
   for (let i = 1; i < rows; i++) {
     const z = z0 + (z1 - z0) * (i / rows);
-    line3(ctx, [x0, y1, z], [x1, y1, z], 'rgba(90,65,38,0.30)', 1);
-    line3(ctx, [x1, y0, z], [x1, y1, z], 'rgba(90,65,38,0.34)', 1);
+    line3(ctx, [x0, y1, z], [x1, y1, z], 'rgba(96,68,38,0.28)', 1);
+    line3(ctx, [x1, y0, z], [x1, y1, z], 'rgba(96,68,38,0.32)', 1);
+  }
+  // corner posts, the log-cabin read
+  line3(ctx, [x0, y1, z0], [x0, y1, z1], 'rgba(96,68,38,0.4)', 1.6);
+  line3(ctx, [x1, y1, z0], [x1, y1, z1], 'rgba(96,68,38,0.45)', 1.6);
+  line3(ctx, [x1, y0, z0], [x1, y0, z1], 'rgba(96,68,38,0.4)', 1.6);
+}
+
+/** Boards running down the slope, from eave to ridge. */
+function roofPlanks(ctx, eaveA, eaveB, ridgeA, ridgeB, n) {
+  for (let i = 1; i < n; i++) {
+    const t = i / n;
+    const e = [lerp(eaveA[0], eaveB[0], t), lerp(eaveA[1], eaveB[1], t), lerp(eaveA[2], eaveB[2], t)];
+    const r = [lerp(ridgeA[0], ridgeB[0], t), lerp(ridgeA[1], ridgeB[1], t), lerp(ridgeA[2], ridgeB[2], t)];
+    line3(ctx, e, r, 'rgba(80,50,24,0.26)', 1.1);
   }
 }
 
-/**
- * Gabled roof: ridge runs along world x, slopes fall toward ±y, and it
- * overhangs the walls by `oh`.
- */
+/** Gabled roof: ridge along world x, slopes falling toward ±y. */
 function gableRoof(ctx, x0, y0, x1, y1, z, rise, oh, colA, colB, trim) {
   const ax0 = x0 - oh, ax1 = x1 + oh, ay0 = y0 - oh, ay1 = y1 + oh;
   const my = (y0 + y1) / 2, top = z + rise;
 
-  // far slope (-y) — mostly hidden but keeps the silhouette solid
   poly3(ctx, [[ax0, ay0, z], [ax1, ay0, z], [ax1, my, top], [ax0, my, top]], colB);
-  // gable ends
-  poly3(ctx, [[ax1, ay0, z], [ax1, ay1, z], [ax1, my, top]], shade(PAL.wall, -0.22));
-  poly3(ctx, [[ax0, ay0, z], [ax0, ay1, z], [ax0, my, top]], shade(PAL.wall, -0.05));
-  // near slope (+y) — the one the eye actually reads
+  poly3(ctx, [[ax1, ay0, z], [ax1, ay1, z], [ax1, my, top]], shade(PAL.wall, -0.26));
+  poly3(ctx, [[ax0, ay0, z], [ax0, ay1, z], [ax0, my, top]], shade(PAL.wall, -0.08));
   poly3(ctx, [[ax0, ay1, z], [ax1, ay1, z], [ax1, my, top], [ax0, my, top]], colA);
 
-  // shingle courses down the near slope
-  const rows = 5;
-  for (let i = 1; i < rows; i++) {
-    const f = i / rows;
-    const yy = ay1 + (my - ay1) * f;
-    const zz = z + rise * f;
-    line3(ctx, [ax0, yy, zz], [ax1, yy, zz], 'rgba(60,35,18,0.28)', 1.2);
-  }
-  // ridge beam
-  line3(ctx, [ax0, my, top], [ax1, my, top], shade(colA, -0.35), 2);
+  roofPlanks(ctx, [ax0, ay1, z], [ax1, ay1, z], [ax0, my, top], [ax1, my, top], 9);
+  line3(ctx, [ax0, my, top], [ax1, my, top], shade(colA, -0.4), 2.4);
 
-  // painted fascia along the eaves — the strongest colour cue on a building
   if (trim) {
-    poly3(ctx, [[ax0, ay1, z], [ax1, ay1, z], [ax1, ay1, z - 3], [ax0, ay1, z - 3]], trim);
-    poly3(ctx, [[ax1, ay0, z], [ax1, ay1, z], [ax1, ay1, z - 3], [ax1, ay0, z - 3]],
+    poly3(ctx, [[ax0, ay1, z], [ax1, ay1, z], [ax1, ay1, z - 3.5], [ax0, ay1, z - 3.5]], trim);
+    poly3(ctx, [[ax1, ay0, z], [ax1, ay1, z], [ax1, ay1, z - 3.5], [ax1, ay0, z - 3.5]],
+      shade(trim, -0.25));
+  }
+}
+
+/** Hipped roof: slopes on all four sides meeting at a short ridge. */
+function hipRoof(ctx, x0, y0, x1, y1, z, rise, oh, colA, colB, trim) {
+  const ax0 = x0 - oh, ax1 = x1 + oh, ay0 = y0 - oh, ay1 = y1 + oh;
+  const cy = (y0 + y1) / 2, cx = (x0 + x1) / 2, top = z + rise;
+  const rl = (x1 - x0) * 0.18;
+  const rx0 = cx - rl, rx1 = cx + rl;
+
+  // far slope, then the two the camera sees
+  poly3(ctx, [[ax0, ay0, z], [ax1, ay0, z], [rx1, cy, top], [rx0, cy, top]], colB);
+  poly3(ctx, [[ax0, ay0, z], [ax0, ay1, z], [rx0, cy, top]], shade(colA, -0.1));
+  poly3(ctx, [[ax1, ay0, z], [ax1, ay1, z], [rx1, cy, top]], shade(colA, -0.3));
+  roofPlanks(ctx, [ax1, ay0, z], [ax1, ay1, z], [rx1, cy, top], [rx1, cy, top], 6);
+  poly3(ctx, [[ax0, ay1, z], [ax1, ay1, z], [rx1, cy, top], [rx0, cy, top]], colA);
+  roofPlanks(ctx, [ax0, ay1, z], [ax1, ay1, z], [rx0, cy, top], [rx1, cy, top], 10);
+  line3(ctx, [rx0, cy, top], [rx1, cy, top], shade(colA, -0.4), 2.4);
+  // hip ridges
+  line3(ctx, [ax0, ay1, z], [rx0, cy, top], shade(colA, -0.35), 1.6);
+  line3(ctx, [ax1, ay1, z], [rx1, cy, top], shade(colA, -0.35), 1.6);
+
+  if (trim) {
+    poly3(ctx, [[ax0, ay1, z], [ax1, ay1, z], [ax1, ay1, z - 3.5], [ax0, ay1, z - 3.5]], trim);
+    poly3(ctx, [[ax1, ay0, z], [ax1, ay1, z], [ax1, ay1, z - 3.5], [ax1, ay0, z - 3.5]],
       shade(trim, -0.25));
   }
 }
 
 function doorAndWindows(ctx, x0, x1, y, z, col) {
   const cx = (x0 + x1) / 2;
-  // door on the +y wall, with a painted frame in the player's colour
   poly3(ctx, [[cx - 6, y, z], [cx + 6, y, z], [cx + 6, y, z + 18], [cx - 6, y, z + 18]],
-    PAL.door, col.fill, 2.2);
-  // shuttered windows either side
+    PAL.door, col.fill, 2.4);
   for (const wx of [x0 + 8, x1 - 8]) {
     if (Math.abs(wx - cx) < 11) continue;
-    poly3(ctx, [[wx - 4, y, z + 10], [wx + 4, y, z + 10], [wx + 4, y, z + 19], [wx - 4, y, z + 19]],
-      '#3f5d76', col.fill, 2.2);
+    poly3(ctx, [[wx - 4.5, y, z + 9], [wx + 4.5, y, z + 9], [wx + 4.5, y, z + 19], [wx - 4.5, y, z + 19]],
+      '#3f5d76', col.fill, 2.4);
   }
-  // one on the +x wall too, so the shaded side isn't a blank slab
   const wy = -y * 0.25;
-  poly3(ctx, [[x1, wy - 4, z + 10], [x1, wy + 4, z + 10],
-              [x1, wy + 4, z + 19], [x1, wy - 4, z + 19]],
-    '#33506a', shade(col.fill, -0.25), 2);
+  poly3(ctx, [[x1, wy - 4.5, z + 9], [x1, wy + 4.5, z + 9],
+              [x1, wy + 4.5, z + 19], [x1, wy - 4.5, z + 19]],
+    '#33506a', shade(col.fill, -0.25), 2.2);
+}
+
+/** Short flight of steps up to the door, as on the sheet's house. */
+function porchSteps(ctx, cx, y, z) {
+  for (let i = 0; i < 3; i++) {
+    const zz = z - i * 2.6;
+    box3(ctx, cx - 7, y + i * 2.6, Math.max(0, zz - 2.6), cx + 7, y + i * 2.6 + 3, zz,
+      shade(PAL.wall, 0.06), shade(PAL.wall, -0.12), shade(PAL.wall, -0.34));
+  }
 }
 
 function buildHouse(ctx, hw, hh, col) {
   const w = hw - 5, h = hh - 5;
-  // stone footing
   timberBox(ctx, -w, -h, 0, w, h, 5, PAL.stone);
-  // walls
   timberBox(ctx, -w, -h, 5, w, h, 32);
   doorAndWindows(ctx, -w, w, h, 5, col);
-  // roof
+  porchSteps(ctx, 0, h, 5);
   gableRoof(ctx, -w, -h, w, h, 32, 15, 4, PAL.roof, shade(PAL.roof, -0.2), col.fill);
 }
 
+/**
+ * Three timber storeys under hipped roofs, ringed by a palisade, flag on top —
+ * the silhouette from the asset sheet.
+ */
 function buildTownCenter(ctx, hw, hh, col, time) {
-  const w = hw - 10, h = hh - 10;
+  const w = hw - 11, h = hh - 11;
 
-  // palisade around the plot
-  palisade(ctx, hw - 2, hh - 2, col);
+  palisade(ctx, hw - 2, hh - 2, false);   // stakes behind the keep
 
-  // ground floor with corner posts
+  // ground storey
   timberBox(ctx, -w, -h, 0, w, h, 6, PAL.stone);
   timberBox(ctx, -w, -h, 6, w, h, 30);
   doorAndWindows(ctx, -w, w, h, 6, col);
-  // player-colour band
-  poly3(ctx, [[-w, h, 30], [w, h, 30], [w, h, 33.5], [-w, h, 33.5]], col.fill);
-  poly3(ctx, [[w, -h, 30], [w, h, 30], [w, h, 33.5], [w, -h, 33.5]], shade(col.fill, -0.25));
+  colourBand(ctx, -w, -h, w, h, 30, col.fill);
+  hipRoof(ctx, -w, -h, w, h, 34, 11, 9, PAL.roof, shade(PAL.roof, -0.2), col.fill);
 
-  // upper storey, inset
-  const w2 = w * 0.74, h2 = h * 0.74;
-  gableRoof(ctx, -w, -h, w, h, 34, 9, 9, PAL.roof, shade(PAL.roof, -0.2), col.fill);
-  timberBox(ctx, -w2, -h2, 42, w2, h2, 62);
-  poly3(ctx, [[-w2, h2, 55], [w2, h2, 55], [w2, h2, 58.5], [-w2, h2, 58.5]], col.fill);
-  gableRoof(ctx, -w2, -h2, w2, h2, 62, 9, 8, PAL.roof, shade(PAL.roof, -0.2), col.fill);
+  // middle storey, inset, with a railed balcony
+  const w2 = w * 0.76, h2 = h * 0.76;
+  timberBox(ctx, -w2, -h2, 44, w2, h2, 64);
+  railing(ctx, w, h, 44, col.fill);
+  for (const wx of [-w2 * 0.5, w2 * 0.5])
+    poly3(ctx, [[wx - 4.5, h2, 50], [wx + 4.5, h2, 50], [wx + 4.5, h2, 60], [wx - 4.5, h2, 60]],
+      '#3f5d76', col.fill, 2.2);
+  colourBand(ctx, -w2, -h2, w2, h2, 64, col.fill);
+  hipRoof(ctx, -w2, -h2, w2, h2, 68, 10, 8, PAL.roof, shade(PAL.roof, -0.2), col.fill);
 
   // lookout
-  const w3 = w2 * 0.6, h3 = h2 * 0.6;
-  timberBox(ctx, -w3, -h3, 70, w3, h3, 86);
-  gableRoof(ctx, -w3, -h3, w3, h3, 86, 11, 7, PAL.roof, shade(PAL.roof, -0.2), col.fill);
+  const w3 = w2 * 0.56, h3 = h2 * 0.56;
+  timberBox(ctx, -w3, -h3, 78, w3, h3, 92);
+  hipRoof(ctx, -w3, -h3, w3, h3, 92, 11, 7, PAL.roof, shade(PAL.roof, -0.2), col.fill);
 
-  // flag
-  const [fx, fy] = p3(0, 0, 96);
-  ctx.strokeStyle = '#5a4128'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(fx, fy + 10); ctx.lineTo(fx, fy - 20); ctx.stroke();
-  const wave = Math.sin(time * 3) * 2.5;
-  ctx.fillStyle = col.fill;
-  ctx.beginPath();
-  ctx.moveTo(fx, fy - 20);
-  ctx.quadraticCurveTo(fx + 10, fy - 19 + wave, fx + 17, fy - 15);
-  ctx.lineTo(fx, fy - 9);
-  ctx.closePath(); ctx.fill();
+  bannerPole(ctx, 0, 0, 103, 26, col, time);
+
+  palisade(ctx, hw - 2, hh - 2, true);    // and the ones in front of it
 }
 
-function palisade(ctx, hw, hh, col) {
-  const step = 11;
-  const posts = [];
+/** A painted band wrapping the two visible walls at height z. */
+function colourBand(ctx, x0, y0, x1, y1, z, c) {
+  poly3(ctx, [[x0, y1, z - 4], [x1, y1, z - 4], [x1, y1, z], [x0, y1, z]], c);
+  poly3(ctx, [[x1, y0, z - 4], [x1, y1, z - 4], [x1, y1, z], [x1, y0, z]], shade(c, -0.25));
+}
+
+/** Balcony rail around a storey. */
+function railing(ctx, w, h, z, c) {
+  poly3(ctx, [[-w, h, z], [w, h, z], [w, h, z + 4], [-w, h, z + 4]], c);
+  poly3(ctx, [[w, -h, z], [w, h, z], [w, h, z + 4], [w, -h, z + 4]], shade(c, -0.25));
+  for (let x = -w + 4; x < w; x += 9) line3(ctx, [x, h, z], [x, h, z + 4], shade(c, -0.4), 1);
+}
+
+/** Wooden stake fence around a plot. */
+function palisade(ctx, hw, hh, front) {
+  const step = 10;
+  let posts = [];
   for (let x = -hw; x <= hw; x += step) { posts.push([x, hh]); posts.push([x, -hh]); }
   for (let y = -hh; y <= hh; y += step) { posts.push([hw, y]); posts.push([-hw, y]); }
   posts.sort((a, b) => (a[0] + a[1]) - (b[0] + b[1]));
+  // The camera looks from +x+y, so stakes with a positive diagonal are nearer
+  // than the keep and have to be painted after it.
+  posts = posts.filter(([x, y]) => (front ? x + y >= 0 : x + y < 0));
   for (const [x, y] of posts) {
-    box3(ctx, x - 2.5, y - 2.5, 0, x + 2.5, y + 2.5, 13,
-      shade(PAL.beam, 0.18), shade(PAL.beam, -0.02), shade(PAL.beam, -0.28));
+    box3(ctx, x - 2.6, y - 2.6, 0, x + 2.6, y + 2.6, 14,
+      shade(PAL.beam, 0.2), shade(PAL.beam, -0.02), shade(PAL.beam, -0.3));
+    poly3(ctx, [[x - 2.6, y - 2.6, 14], [x + 2.6, y - 2.6, 14], [x, y, 17.5]],
+      shade(PAL.beam, 0.26));
+    poly3(ctx, [[x - 2.6, y + 2.6, 14], [x + 2.6, y + 2.6, 14], [x, y, 17.5]],
+      shade(PAL.beam, 0.1));
   }
+  if (front) {
+    line3(ctx, [-hw, hh, 9], [hw, hh, 9], shade(PAL.beam, -0.18), 2);
+    line3(ctx, [hw, -hh, 9], [hw, hh, 9], shade(PAL.beam, -0.28), 2);
+  }
+}
+
+/** Pole with a swallow-tailed banner. */
+function bannerPole(ctx, wx, wy, z, len, col, time) {
+  const [bx, by] = p3(wx, wy, z);
+  ctx.strokeStyle = PAL.trunkDark;
+  ctx.lineWidth = 2.6;
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(bx, by + 6); ctx.lineTo(bx, by - len); ctx.stroke();
+  ctx.fillStyle = PAL.steelLight;
+  ctx.beginPath(); ctx.arc(bx, by - len - 2.5, 2.4, 0, TAU); ctx.fill();
+
+  const wave = Math.sin(time * 2.6) * 2;
+  const top = by - len + 2, bot = top + 15, tip = 20;
+  ctx.fillStyle = col.fill;
+  ctx.beginPath();
+  ctx.moveTo(bx, top);
+  ctx.quadraticCurveTo(bx + tip * 0.6, top + wave, bx + tip, top + 2 + wave);
+  ctx.lineTo(bx + tip * 0.66, (top + bot) / 2 + wave);
+  ctx.lineTo(bx + tip, bot + wave);
+  ctx.quadraticCurveTo(bx + tip * 0.6, bot + 2 + wave, bx, bot);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  ctx.beginPath();
+  ctx.moveTo(bx, top + 10); ctx.lineTo(bx + tip * 0.75, top + 11 + wave);
+  ctx.lineTo(bx + tip * 0.7, bot + wave); ctx.lineTo(bx, bot);
+  ctx.closePath(); ctx.fill();
 }
 
 function buildHall(ctx, hw, hh, col, sign) {
@@ -956,12 +1284,22 @@ function buildCamp(ctx, hw, hh, col, kind) {
   gableRoof(ctx, -w, -h, w, h, 20, 12, 6, PAL.roof, shade(PAL.roof, -0.2), col.fill);
 
   if (kind === 'logs') {
-    // stacked timber
-    for (let i = 0; i < 3; i++) {
-      const z = i * 6;
-      const off = i * 2;
-      box3(ctx, -w + 4 + off, -3, z, w - 4 - off, 5, z + 6,
-        shade('#c9a06a', 0.15), shade('#c9a06a', -0.05), shade('#c9a06a', -0.3));
+    // a corded stack: each log a cylinder with a pale end-grain face
+    const rows = [[-6, 3], [-6, 3], [-2, 2]];
+    for (let r = 0; r < rows.length; r++) {
+      const [y0, n] = rows[r];
+      for (let i = 0; i < n; i++) {
+        const z = r * 7 + 1;
+        const yy = y0 + i * 7 - r * 3.5;
+        const x0 = -w + 5, x1 = w - 5;
+        box3(ctx, x0, yy - 3.2, z, x1, yy + 3.2, z + 6.4,
+          shade(PAL.trunk, 0.16), shade(PAL.trunk, -0.04), shade(PAL.trunk, -0.3));
+        const [ex, ey] = p3(x1, yy, z + 3.2);
+        ctx.fillStyle = PAL.logEnd;
+        ctx.beginPath(); ctx.ellipse(ex, ey, 3.4, 3.2, 0, 0, TAU); ctx.fill();
+        ctx.fillStyle = shade(PAL.trunk, -0.1);
+        ctx.beginPath(); ctx.ellipse(ex, ey, 1.5, 1.4, 0, 0, TAU); ctx.fill();
+      }
     }
   } else {
     // ore cart
@@ -1053,33 +1391,41 @@ function buildCastle(ctx, hw, hh, col) {
 
 function buildFarm(ctx, b, hw, hh, col) {
   const frac = b.amount / b.maxAmount;
+
   // tilled soil
   ctx.beginPath();
   isoDiamondPath(ctx, 0, 0, hw - 1, hh - 1, 0);
   ctx.fillStyle = PAL.soil;
   ctx.fill();
-  ctx.strokeStyle = shade(col.fill, -0.15);
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = PAL.soilDark;
+  ctx.lineWidth = 2.5;
   ctx.stroke();
 
-  // furrows running along world x
-  const rows = 6;
+  // furrows, with crops standing in the ones still worth harvesting
+  const rows = 7;
   for (let i = 1; i < rows; i++) {
     const y = -hh + (2 * hh) * (i / rows);
-    line3(ctx, [-hw + 3, y, 0], [hw - 3, y, 0], PAL.soilDark, 3);
-    if (i / rows <= frac + 0.12) {
-      line3(ctx, [-hw + 3, y - 1.5, 0], [hw - 3, y - 1.5, 0], PAL.crop, 2.4);
+    line3(ctx, [-hw + 4, y, 0], [hw - 4, y, 0], PAL.soilDark, 3.2);
+    if (i / rows > frac + 0.14) continue;
+    const n = 9;
+    for (let j = 0; j <= n; j++) {
+      const x = lerp(-hw + 5, hw - 5, j / n);
+      const [px, py] = p3(x, y - 1.5, 0);
+      ctx.fillStyle = PAL.crop;
+      ctx.beginPath();
+      ctx.moveTo(px, py - 5);
+      ctx.lineTo(px - 2.2, py);
+      ctx.lineTo(px + 2.2, py);
+      ctx.closePath();
+      ctx.fill();
     }
   }
-  // sprouts
-  ctx.fillStyle = shade(PAL.crop, 0.1);
-  for (let i = 0; i < 22; i++) {
-    if (hashNoise(b.seed, i) > frac) continue;
-    const wx = (hashNoise(b.seed + i, 5) - 0.5) * (hw * 1.7);
-    const wy = (hashNoise(b.seed, i + 40) - 0.5) * (hh * 1.7);
-    const [px, py] = p3(wx, wy, 0);
-    ctx.fillRect(px, py - 4, 1.8, 4);
-  }
+  // headland edging in the owner's colour
+  ctx.strokeStyle = shade(col.fill, -0.1);
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  isoDiamondPath(ctx, 0, 0, hw - 1, hh - 1, 0);
+  ctx.stroke();
 }
 
 function drawConstruction(ctx, b, col, hw, hh) {

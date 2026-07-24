@@ -35,8 +35,10 @@
     if (!G.running && (code === 'Enter' || code === 'Space')) start();
   });
 
-  function start() {
+  async function start() {
     if (G.running) return;
+    // Atlas art wins where it exists; anything absent falls back to drawn art.
+    await Sprites.load('assets/atlas.json');
     startOverlay.classList.add('hidden');
     resize();
     UI.init();
@@ -114,6 +116,7 @@
   }
 
   resize();
-  drawStartArt();
+  // try the atlas early so the start-screen diorama uses it too
+  Sprites.load('assets/atlas.json').then(drawStartArt, drawStartArt);
   requestAnimationFrame(frame);
 })();

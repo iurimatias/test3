@@ -135,6 +135,8 @@ const G = {
       this.resources.push(n);
     });
 
+    this.map.decorate((d) => this.decor.push(d));
+
     this.cam = new Camera();
     this.fog = new FogOfWar(CFG.MAP_W, CFG.MAP_H);
     this.renderer = new Renderer(canvas);

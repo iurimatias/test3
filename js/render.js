@@ -448,12 +448,10 @@ class Renderer {
     ctx.setLineDash([]);
     ctx.fillStyle = 'rgba(20,30,12,0.25)';
     ctx.beginPath(); ctx.ellipse(tx, ty, 7, 3.2, 0, 0, TAU); ctx.fill();
-    ctx.strokeStyle = '#e8dcc0'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx, ty - 26); ctx.stroke();
-    ctx.fillStyle = PLAYER_COLORS[b.owner].fill;
-    ctx.beginPath();
-    ctx.moveTo(tx, ty - 26); ctx.lineTo(tx + 15, ty - 21); ctx.lineTo(tx, ty - 15);
-    ctx.closePath(); ctx.fill();
+    ctx.save();
+    ctx.translate(tx, ty);
+    bannerPole(ctx, 0, 0, 0, 30, PLAYER_COLORS[b.owner], G.time);
+    ctx.restore();
     ctx.restore();
   }
 

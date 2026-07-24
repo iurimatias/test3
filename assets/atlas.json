@@ -1,0 +1,929 @@
+{
+ "sheets": {
+  "s1": {
+   "url": "assets/sheet-01.jpg",
+   "key": {
+    "bgMin": 214,
+    "bgLuma": 243
+   }
+  },
+  "s2": {
+   "url": "assets/sheet-02-buildings.jpg",
+   "key": {}
+  },
+  "a_villager": {
+   "url": "assets/anim-villager.jpg",
+   "key": {}
+  },
+  "a_miner": {
+   "url": "assets/anim-miner.jpg",
+   "key": {}
+  },
+  "a_lumberjack": {
+   "url": "assets/anim-lumberjack.jpg",
+   "key": {}
+  },
+  "a_farmer": {
+   "url": "assets/anim-farmer.png",
+   "key": {}
+  },
+  "a_spearman": {
+   "url": "assets/anim-spearman.jpg",
+   "key": {}
+  },
+  "a_archer": {
+   "url": "assets/anim-archer.jpg",
+   "key": {}
+  },
+  "a_soldier": {
+   "url": "assets/anim-soldier.jpg",
+   "key": {}
+  },
+  "a_knight": {
+   "url": "assets/anim-knight.jpg",
+   "key": {}
+  }
+ },
+ "sprites": {
+  "b.towncenter": {
+   "sheet": "s1",
+   "x": 18,
+   "y": 15,
+   "w": 302,
+   "h": 240,
+   "ax": 95.9,
+   "ay": 209.8,
+   "worldW": 107.52
+  },
+  "b.house": {
+   "sheet": "s1",
+   "x": 327,
+   "y": 15,
+   "w": 271,
+   "h": 219,
+   "ax": 87.1,
+   "ay": 175.3,
+   "worldW": 71.68
+  },
+  "b.farm": {
+   "sheet": "s1",
+   "x": 605,
+   "y": 15,
+   "w": 300,
+   "h": 215,
+   "ax": 135.2,
+   "ay": 180,
+   "worldW": 71.68
+  },
+  "r.tree": {
+   "sheet": "s1",
+   "x": 911,
+   "y": 15,
+   "w": 229,
+   "h": 227,
+   "ax": 97.4,
+   "ay": 202.7,
+   "worldW": 62.55
+  },
+  "r.bush": {
+   "sheet": "s1",
+   "x": 1149,
+   "y": 15,
+   "w": 276,
+   "h": 194,
+   "ax": 129.8,
+   "ay": 177.3,
+   "worldW": 42.68
+  },
+  "d.shore": {
+   "sheet": "s1",
+   "x": 18,
+   "y": 302,
+   "w": 280,
+   "h": 156,
+   "ax": 140,
+   "ay": 156,
+   "worldW": 71.79
+  },
+  "d.rocks.big": {
+   "sheet": "s1",
+   "x": 347,
+   "y": 302,
+   "w": 218,
+   "h": 143,
+   "ax": 103.2,
+   "ay": 128.2,
+   "worldW": 45.73
+  },
+  "d.rocks.small": {
+   "sheet": "s1",
+   "x": 652,
+   "y": 302,
+   "w": 152,
+   "h": 122,
+   "ax": 71.1,
+   "ay": 106.5,
+   "worldW": 24.92
+  },
+  "r.stone": {
+   "sheet": "s1",
+   "x": 914,
+   "y": 317,
+   "w": 207,
+   "h": 132,
+   "ax": 102.3,
+   "ay": 113.5,
+   "worldW": 50.18
+  },
+  "r.gold": {
+   "sheet": "s1",
+   "x": 1164,
+   "y": 302,
+   "w": 261,
+   "h": 147,
+   "ax": 143.4,
+   "ay": 123.5,
+   "worldW": 56.82
+  },
+  "d.logs": {
+   "sheet": "s1",
+   "x": 18,
+   "y": 508,
+   "w": 302,
+   "h": 133,
+   "ax": 131.7,
+   "ay": 108.5,
+   "worldW": 59.04
+  },
+  "d.path": {
+   "sheet": "s1",
+   "x": 327,
+   "y": 508,
+   "w": 271,
+   "h": 136,
+   "ax": 139.6,
+   "ay": 113,
+   "worldW": 39.85
+  },
+  "d.flag": {
+   "sheet": "s1",
+   "x": 606,
+   "y": 508,
+   "w": 261,
+   "h": 134,
+   "ax": 106.2,
+   "ay": 121.9,
+   "worldW": 66.22
+  },
+  "b.barracks": {
+   "sheet": "s2",
+   "x": 43,
+   "y": 59,
+   "w": 326,
+   "h": 285,
+   "ax": 156.4,
+   "ay": 252.3,
+   "worldW": 107.52
+  },
+  "b.archeryrange": {
+   "sheet": "s2",
+   "x": 418,
+   "y": 62,
+   "w": 280,
+   "h": 277,
+   "ax": 126.9,
+   "ay": 246.9,
+   "worldW": 107.52
+  },
+  "b.stable": {
+   "sheet": "s2",
+   "x": 751,
+   "y": 57,
+   "w": 315,
+   "h": 293,
+   "ax": 170.6,
+   "ay": 256.3,
+   "worldW": 107.52
+  },
+  "b.blacksmith": {
+   "sheet": "s2",
+   "x": 1114,
+   "y": 63,
+   "w": 277,
+   "h": 275,
+   "ax": 144.3,
+   "ay": 249.7,
+   "worldW": 71.68
+  },
+  "b.mill": {
+   "sheet": "s2",
+   "x": 90,
+   "y": 399,
+   "w": 233,
+   "h": 277,
+   "ax": 119.3,
+   "ay": 249.2,
+   "worldW": 71.68
+  },
+  "b.lumbercamp": {
+   "sheet": "s2",
+   "x": 423,
+   "y": 424,
+   "w": 259,
+   "h": 259,
+   "ax": 116,
+   "ay": 218.9,
+   "worldW": 71.68
+  },
+  "b.miningcamp": {
+   "sheet": "s2",
+   "x": 760,
+   "y": 420,
+   "w": 262,
+   "h": 253,
+   "ax": 126.7,
+   "ay": 222.7,
+   "worldW": 71.68
+  },
+  "b.tower": {
+   "sheet": "s2",
+   "x": 1140,
+   "y": 388,
+   "w": 187,
+   "h": 296,
+   "ax": 94.9,
+   "ay": 266.8,
+   "worldW": 57.34
+  },
+  "b.castle": {
+   "sheet": "s2",
+   "x": 36,
+   "y": 707,
+   "w": 365,
+   "h": 314,
+   "ax": 148.1,
+   "ay": 270.7,
+   "worldW": 143.36
+  },
+  "d.stump": {
+   "sheet": "s2",
+   "x": 484,
+   "y": 816,
+   "w": 207,
+   "h": 161,
+   "ax": 108.6,
+   "ay": 137.3,
+   "worldW": 23.14
+  },
+  "d.reeds": {
+   "sheet": "s2",
+   "x": 801,
+   "y": 750,
+   "w": 169,
+   "h": 234,
+   "ax": 88.7,
+   "ay": 206.1,
+   "worldW": 18.78
+  },
+  "u.villager.f0": {
+   "sheet": "a_villager",
+   "x": 78,
+   "y": 219,
+   "w": 125,
+   "h": 271,
+   "ax": 62.8,
+   "ay": 254.9,
+   "worldW": 14.89
+  },
+  "u.villager.f1": {
+   "sheet": "a_villager",
+   "x": 312,
+   "y": 221,
+   "w": 162,
+   "h": 269,
+   "ax": 78.7,
+   "ay": 252.1,
+   "worldW": 19.29
+  },
+  "u.villager.f2": {
+   "sheet": "a_villager",
+   "x": 574,
+   "y": 211,
+   "w": 126,
+   "h": 279,
+   "ax": 61.6,
+   "ay": 263.4,
+   "worldW": 15
+  },
+  "u.villager.f3": {
+   "sheet": "a_villager",
+   "x": 825,
+   "y": 224,
+   "w": 163,
+   "h": 266,
+   "ax": 78.9,
+   "ay": 249.2,
+   "worldW": 19.41
+  },
+  "u.villager.f4": {
+   "sheet": "a_villager",
+   "x": 1108,
+   "y": 214,
+   "w": 126,
+   "h": 276,
+   "ax": 61.6,
+   "ay": 260.4,
+   "worldW": 15
+  },
+  "u.villager.f5": {
+   "sheet": "a_villager",
+   "x": 1343,
+   "y": 218,
+   "w": 164,
+   "h": 272,
+   "ax": 101.4,
+   "ay": 256.5,
+   "worldW": 19.53
+  },
+  "u.villager.f6": {
+   "sheet": "a_villager",
+   "x": 1616,
+   "y": 222,
+   "w": 182,
+   "h": 268,
+   "ax": 96.5,
+   "ay": 250.9,
+   "worldW": 21.67
+  },
+  "u.villager.f7": {
+   "sheet": "a_villager",
+   "x": 1870,
+   "y": 419,
+   "w": 272,
+   "h": 89,
+   "ax": 118.8,
+   "ay": 66.8,
+   "worldW": 32.39
+  },
+  "u.miner.f0": {
+   "sheet": "a_miner",
+   "x": 89,
+   "y": 247,
+   "w": 150,
+   "h": 243,
+   "ax": 67.2,
+   "ay": 229.7,
+   "worldW": 19.85
+  },
+  "u.miner.f1": {
+   "sheet": "a_miner",
+   "x": 347,
+   "y": 250,
+   "w": 193,
+   "h": 241,
+   "ax": 73.5,
+   "ay": 226.6,
+   "worldW": 25.54
+  },
+  "u.miner.f2": {
+   "sheet": "a_miner",
+   "x": 634,
+   "y": 246,
+   "w": 144,
+   "h": 244,
+   "ax": 54.2,
+   "ay": 231.5,
+   "worldW": 19.06
+  },
+  "u.miner.f3": {
+   "sheet": "a_miner",
+   "x": 872,
+   "y": 254,
+   "w": 187,
+   "h": 236,
+   "ax": 68.1,
+   "ay": 222.4,
+   "worldW": 24.75
+  },
+  "u.miner.f4": {
+   "sheet": "a_miner",
+   "x": 1127,
+   "y": 243,
+   "w": 145,
+   "h": 247,
+   "ax": 56.1,
+   "ay": 233.7,
+   "worldW": 19.19
+  },
+  "u.miner.f5": {
+   "sheet": "a_miner",
+   "x": 1375,
+   "y": 181,
+   "w": 143,
+   "h": 315,
+   "ax": 62.8,
+   "ay": 301.4,
+   "worldW": 18.93
+  },
+  "u.miner.f6": {
+   "sheet": "a_miner",
+   "x": 1596,
+   "y": 297,
+   "w": 244,
+   "h": 204,
+   "ax": 83.8,
+   "ay": 186.4,
+   "worldW": 32.3
+  },
+  "u.miner.f7": {
+   "sheet": "a_miner",
+   "x": 1884,
+   "y": 431,
+   "w": 214,
+   "h": 104,
+   "ax": 128.4,
+   "ay": 82.8,
+   "worldW": 28.32
+  },
+  "u.lumberjack.f0": {
+   "sheet": "a_lumberjack",
+   "x": 85,
+   "y": 228,
+   "w": 131,
+   "h": 316,
+   "ax": 65.6,
+   "ay": 298.3,
+   "worldW": 13.31
+  },
+  "u.lumberjack.f1": {
+   "sheet": "a_lumberjack",
+   "x": 303,
+   "y": 232,
+   "w": 188,
+   "h": 313,
+   "ax": 93.5,
+   "ay": 294.8,
+   "worldW": 19.1
+  },
+  "u.lumberjack.f2": {
+   "sheet": "a_lumberjack",
+   "x": 567,
+   "y": 222,
+   "w": 128,
+   "h": 322,
+   "ax": 71.2,
+   "ay": 304.8,
+   "worldW": 13
+  },
+  "u.lumberjack.f3": {
+   "sheet": "a_lumberjack",
+   "x": 810,
+   "y": 236,
+   "w": 186,
+   "h": 309,
+   "ax": 90.7,
+   "ay": 290.6,
+   "worldW": 18.89
+  },
+  "u.lumberjack.f4": {
+   "sheet": "a_lumberjack",
+   "x": 1080,
+   "y": 228,
+   "w": 134,
+   "h": 316,
+   "ax": 66.3,
+   "ay": 298.9,
+   "worldW": 13.61
+  },
+  "u.lumberjack.f5": {
+   "sheet": "a_lumberjack",
+   "x": 1343,
+   "y": 177,
+   "w": 178,
+   "h": 368,
+   "ax": 91.6,
+   "ay": 349.2,
+   "worldW": 18.08
+  },
+  "u.lumberjack.f6": {
+   "sheet": "a_lumberjack",
+   "x": 1581,
+   "y": 292,
+   "w": 280,
+   "h": 253,
+   "ax": 89.9,
+   "ay": 234.1,
+   "worldW": 28.44
+  },
+  "u.lumberjack.f7": {
+   "sheet": "a_lumberjack",
+   "x": 1862,
+   "y": 467,
+   "w": 289,
+   "h": 111,
+   "ax": 124,
+   "ay": 88.5,
+   "worldW": 29.36
+  },
+  "u.farmer.f0": {
+   "sheet": "a_farmer",
+   "x": 86,
+   "y": 277,
+   "w": 116,
+   "h": 219,
+   "ax": 59.6,
+   "ay": 206.9,
+   "worldW": 17.15
+  },
+  "u.farmer.f1": {
+   "sheet": "a_farmer",
+   "x": 319,
+   "y": 277,
+   "w": 142,
+   "h": 219,
+   "ax": 69,
+   "ay": 205.4,
+   "worldW": 21
+  },
+  "u.farmer.f2": {
+   "sheet": "a_farmer",
+   "x": 585,
+   "y": 274,
+   "w": 125,
+   "h": 222,
+   "ax": 59,
+   "ay": 209.1,
+   "worldW": 18.48
+  },
+  "u.farmer.f3": {
+   "sheet": "a_farmer",
+   "x": 826,
+   "y": 276,
+   "w": 196,
+   "h": 220,
+   "ax": 58.8,
+   "ay": 210.1,
+   "worldW": 28.98
+  },
+  "u.farmer.f4": {
+   "sheet": "a_farmer",
+   "x": 1107,
+   "y": 281,
+   "w": 201,
+   "h": 217,
+   "ax": 53.7,
+   "ay": 204.1,
+   "worldW": 29.72
+  },
+  "u.farmer.f5": {
+   "sheet": "a_farmer",
+   "x": 1384,
+   "y": 197,
+   "w": 160,
+   "h": 302,
+   "ax": 66.3,
+   "ay": 286.9,
+   "worldW": 23.66
+  },
+  "u.farmer.f6": {
+   "sheet": "a_farmer",
+   "x": 1649,
+   "y": 308,
+   "w": 218,
+   "h": 191,
+   "ax": 102.2,
+   "ay": 178.6,
+   "worldW": 32.23
+  },
+  "u.farmer.f7": {
+   "sheet": "a_farmer",
+   "x": 1896,
+   "y": 429,
+   "w": 250,
+   "h": 79,
+   "ax": 131.7,
+   "ay": 70,
+   "worldW": 36.96
+  },
+  "u.spearman.f0": {
+   "sheet": "a_spearman",
+   "x": 145,
+   "y": 207,
+   "w": 118,
+   "h": 304,
+   "ax": 64.7,
+   "ay": 286.4,
+   "worldW": 17.75
+  },
+  "u.spearman.f1": {
+   "sheet": "a_spearman",
+   "x": 372,
+   "y": 210,
+   "w": 139,
+   "h": 301,
+   "ax": 68.5,
+   "ay": 282,
+   "worldW": 20.91
+  },
+  "u.spearman.f2": {
+   "sheet": "a_spearman",
+   "x": 612,
+   "y": 210,
+   "w": 102,
+   "h": 300,
+   "ax": 49.5,
+   "ay": 272.9,
+   "worldW": 15.35
+  },
+  "u.spearman.f3": {
+   "sheet": "a_spearman",
+   "x": 824,
+   "y": 210,
+   "w": 140,
+   "h": 300,
+   "ax": 59.6,
+   "ay": 279.8,
+   "worldW": 21.06
+  },
+  "u.spearman.f4": {
+   "sheet": "a_spearman",
+   "x": 1061,
+   "y": 210,
+   "w": 109,
+   "h": 299,
+   "ax": 58.2,
+   "ay": 275.4,
+   "worldW": 16.4
+  },
+  "u.spearman.f5": {
+   "sheet": "a_spearman",
+   "x": 1256,
+   "y": 290,
+   "w": 227,
+   "h": 218,
+   "ax": 113,
+   "ay": 204.4,
+   "worldW": 34.15
+  },
+  "u.spearman.f6": {
+   "sheet": "a_spearman",
+   "x": 1552,
+   "y": 296,
+   "w": 202,
+   "h": 212,
+   "ax": 89.4,
+   "ay": 198.6,
+   "worldW": 30.39
+  },
+  "u.spearman.f7": {
+   "sheet": "a_spearman",
+   "x": 1755,
+   "y": 353,
+   "w": 372,
+   "h": 177,
+   "ax": 167.5,
+   "ay": 156.3,
+   "worldW": 55.96
+  },
+  "u.archer.f0": {
+   "sheet": "a_archer",
+   "x": 62,
+   "y": 244,
+   "w": 118,
+   "h": 235,
+   "ax": 67.9,
+   "ay": 221.9,
+   "worldW": 17.79
+  },
+  "u.archer.f1": {
+   "sheet": "a_archer",
+   "x": 301,
+   "y": 244,
+   "w": 148,
+   "h": 235,
+   "ax": 80.4,
+   "ay": 222.3,
+   "worldW": 22.31
+  },
+  "u.archer.f2": {
+   "sheet": "a_archer",
+   "x": 581,
+   "y": 240,
+   "w": 109,
+   "h": 239,
+   "ax": 61.9,
+   "ay": 226.3,
+   "worldW": 16.43
+  },
+  "u.archer.f3": {
+   "sheet": "a_archer",
+   "x": 808,
+   "y": 244,
+   "w": 143,
+   "h": 235,
+   "ax": 77.9,
+   "ay": 222.2,
+   "worldW": 21.55
+  },
+  "u.archer.f4": {
+   "sheet": "a_archer",
+   "x": 1077,
+   "y": 240,
+   "w": 113,
+   "h": 239,
+   "ax": 65.3,
+   "ay": 225.6,
+   "worldW": 17.03
+  },
+  "u.archer.f5": {
+   "sheet": "a_archer",
+   "x": 1345,
+   "y": 248,
+   "w": 170,
+   "h": 231,
+   "ax": 70.2,
+   "ay": 218.1,
+   "worldW": 25.62
+  },
+  "u.archer.f6": {
+   "sheet": "a_archer",
+   "x": 1606,
+   "y": 240,
+   "w": 224,
+   "h": 239,
+   "ax": 69.9,
+   "ay": 226,
+   "worldW": 33.76
+  },
+  "u.archer.f7": {
+   "sheet": "a_archer",
+   "x": 1874,
+   "y": 400,
+   "w": 251,
+   "h": 106,
+   "ax": 143.7,
+   "ay": 90.2,
+   "worldW": 37.83
+  },
+  "u.soldier.f0": {
+   "sheet": "a_soldier",
+   "x": 92,
+   "y": 282,
+   "w": 132,
+   "h": 245,
+   "ax": 69,
+   "ay": 227.8,
+   "worldW": 19.46
+  },
+  "u.soldier.f1": {
+   "sheet": "a_soldier",
+   "x": 327,
+   "y": 282,
+   "w": 162,
+   "h": 246,
+   "ax": 75.7,
+   "ay": 227.8,
+   "worldW": 23.88
+  },
+  "u.soldier.f2": {
+   "sheet": "a_soldier",
+   "x": 595,
+   "y": 279,
+   "w": 133,
+   "h": 248,
+   "ax": 66.8,
+   "ay": 233,
+   "worldW": 19.61
+  },
+  "u.soldier.f3": {
+   "sheet": "a_soldier",
+   "x": 840,
+   "y": 282,
+   "w": 172,
+   "h": 245,
+   "ax": 78.2,
+   "ay": 228.3,
+   "worldW": 25.36
+  },
+  "u.soldier.f4": {
+   "sheet": "a_soldier",
+   "x": 1122,
+   "y": 280,
+   "w": 131,
+   "h": 247,
+   "ax": 66.9,
+   "ay": 232.1,
+   "worldW": 19.31
+  },
+  "u.soldier.f5": {
+   "sheet": "a_soldier",
+   "x": 1341,
+   "y": 210,
+   "w": 160,
+   "h": 318,
+   "ax": 77.9,
+   "ay": 300.2,
+   "worldW": 23.59
+  },
+  "u.soldier.f6": {
+   "sheet": "a_soldier",
+   "x": 1558,
+   "y": 294,
+   "w": 205,
+   "h": 234,
+   "ax": 79.7,
+   "ay": 215.5,
+   "worldW": 30.22
+  },
+  "u.soldier.f7": {
+   "sheet": "a_soldier",
+   "x": 1824,
+   "y": 432,
+   "w": 269,
+   "h": 105,
+   "ax": 102.2,
+   "ay": 88.3,
+   "worldW": 39.66
+  },
+  "u.knight.f0": {
+   "sheet": "a_knight",
+   "x": 28,
+   "y": 261,
+   "w": 206,
+   "h": 231,
+   "ax": 94.9,
+   "ay": 217.7,
+   "worldW": 38.73
+  },
+  "u.knight.f1": {
+   "sheet": "a_knight",
+   "x": 289,
+   "y": 260,
+   "w": 214,
+   "h": 233,
+   "ax": 109.4,
+   "ay": 219.1,
+   "worldW": 40.24
+  },
+  "u.knight.f2": {
+   "sheet": "a_knight",
+   "x": 567,
+   "y": 260,
+   "w": 198,
+   "h": 232,
+   "ax": 89.2,
+   "ay": 218.1,
+   "worldW": 37.23
+  },
+  "u.knight.f3": {
+   "sheet": "a_knight",
+   "x": 838,
+   "y": 260,
+   "w": 214,
+   "h": 233,
+   "ax": 111.1,
+   "ay": 218.9,
+   "worldW": 40.24
+  },
+  "u.knight.f4": {
+   "sheet": "a_knight",
+   "x": 1129,
+   "y": 260,
+   "w": 204,
+   "h": 233,
+   "ax": 91.4,
+   "ay": 218.8,
+   "worldW": 38.36
+  },
+  "u.knight.f5": {
+   "sheet": "a_knight",
+   "x": 1399,
+   "y": 191,
+   "w": 203,
+   "h": 304,
+   "ax": 92.2,
+   "ay": 289.2,
+   "worldW": 38.17
+  },
+  "u.knight.f6": {
+   "sheet": "a_knight",
+   "x": 1646,
+   "y": 245,
+   "w": 220,
+   "h": 251,
+   "ax": 114.7,
+   "ay": 236.8,
+   "worldW": 41.36
+  },
+  "u.knight.f7": {
+   "sheet": "a_knight",
+   "x": 1900,
+   "y": 379,
+   "w": 243,
+   "h": 126,
+   "ax": 129.2,
+   "ay": 109.5,
+   "worldW": 45.69
+  }
+ }
+}

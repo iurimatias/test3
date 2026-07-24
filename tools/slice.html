@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sheet slicer → assets/atlas.json</title>
+<style>
+  body { font: 14px/1.55 system-ui, sans-serif; margin: 20px; background: #1c1a16; color: #eee; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  p, li { color: #b3ab9c; max-width: 78ch; }
+  button { padding: 9px 18px; font-weight: 700; cursor: pointer; margin: 12px 0; }
+  textarea { width: 100%; height: 320px; font: 12px ui-monospace, monospace;
+             background: #12100d; color: #cfc; border: 1px solid #444; padding: 8px; }
+  canvas { max-width: 100%; border: 1px solid #444; background: #7cae3e; margin-top: 12px; }
+  code { color: #e8c34a; }
+</style>
+</head>
+<body>
+<h1>Sheet slicer</h1>
+<p>
+  Rebuilds <code>assets/atlas.json</code> from the sheets in <code>assets/</code>.
+  Run it from the dev server (<code>python3 serve.py</code>) at
+  <code>/tools/slice.html</code>, then paste the output over the atlas file.
+</p>
+<ul>
+  <li><b>Keying</b> — the sheets ship as JPEG with transparency flattened onto a
+      checkerboard. <code>keyBackground</code> in <code>js/sprites.js</code> floods in
+      from the border so interior whites (windmill sails, archery target) survive,
+      and rebuilds soft drop shadows as real alpha.</li>
+  <li><b>Cells</b> — found from gaps in alpha coverage. A run that swallowed its
+      neighbour is split at its thinnest column until the expected count is met.</li>
+  <li><b>Captions</b> — on the labelled sheet, the cell is cut at the last quiet
+      gap that still has several rows of content beneath it. Counting rows rather
+      than pixels stops the card's one-pixel bottom border being read as a label.</li>
+  <li><b>Anchors</b> — the drop shadow's opacity-weighted centroid, sampled in the
+      bottom third. That is the ground-contact point and the steadiest reference
+      across a walk cycle (~12px drift versus ~20px for the bounding box).</li>
+  <li><b>Unit scale</b> — one scale per strip, derived from head-to-ground height
+      rather than the bounding box, so a tall axe does not shrink the lumberjack.
+      The strips were generated separately and differ in size by up to 45%.</li>
+</ul>
+<button id="go">Rebuild atlas</button>
+<textarea id="out" spellcheck="false"></textarea>
+<canvas id="preview" width="1400" height="320"></canvas>
+
+<script src="../js/config.js"></script>
+<script src="../js/utils.js"></script>
+<script src="../js/iso.js"></script>
+<script src="../js/sprites.js"></script>
+<script>
+const load = (u) => new Promise((res, rej) => {
+  const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = u;
+});
+
+/** Cells from alpha gaps, splitting merged runs until `expect` is reached. */
+function sliceCells(cv, rowMinH, colMinW, expect) {
+  const w = cv.width, h = cv.height;
+  const D = cv.getContext('2d').getImageData(0, 0, w, h).data;
+  const on = (x, y) => D[(y * w + x) * 4 + 3] > 16;
+  const runs = (flags, minLen) => {
+    const o = []; let s = -1;
+    for (let i = 0; i < flags.length; i++) {
+      if (flags[i] && s < 0) s = i;
+      else if (!flags[i] && s >= 0) { if (i - s >= minLen) o.push([s, i]); s = -1; }
+    }
+    if (s >= 0 && flags.length - s >= minLen) o.push([s, flags.length]);
+    return o;
+  };
+  const rowHas = new Array(h).fill(false);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (on(x, y)) { rowHas[y] = true; break; }
+
+  const cells = [];
+  for (const [y0, y1] of runs(rowHas, rowMinH)) {
+    const dens = new Array(w).fill(0);
+    for (let x = 0; x < w; x++) { let n = 0; for (let y = y0; y < y1; y++) if (on(x, y)) n++; dens[x] = n; }
+    let cols = runs(dens.map(n => n > 0), colMinW);
+    let guard = 0;
+    while (expect && cols.length < expect && guard++ < 12) {
+      const med = cols.map(r => r[1] - r[0]).sort((a, b) => a - b)[Math.floor(cols.length / 2)];
+      let wi = -1, wW = 0;
+      cols.forEach((r, i) => { const ww = r[1] - r[0]; if (ww > wW) { wW = ww; wi = i; } });
+      if (wi < 0 || wW < med * 1.45) break;
+      const [a, b] = cols[wi];
+      const m0 = a + Math.floor((b - a) * 0.28), m1 = b - Math.floor((b - a) * 0.28);
+      let cut = -1, best = Infinity;
+      for (let x = m0; x < m1; x++) if (dens[x] < best) { best = dens[x]; cut = x; }
+      if (cut < 0) break;
+      cols.splice(wi, 1, [a, cut], [cut + 1, b]);
+      cols.sort((p, q) => p[0] - q[0]);
+    }
+    for (const [x0, x1] of cols) {
+      let bx0 = 1e9, by0 = 1e9, bx1 = -1, by1 = -1;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (on(x, y)) {
+        if (x < bx0) bx0 = x; if (x > bx1) bx1 = x;
+        if (y < by0) by0 = y; if (y > by1) by1 = y;
+      }
+      if (bx1 >= 0) cells.push({ x: bx0, y: by0, w: bx1 - bx0 + 1, h: by1 - by0 + 1 });
+    }
+  }
+  return { cells, data: D, W: w };
+}
+
+function trimCaption(D, W, c) {
+  const dens = [];
+  for (let y = c.y; y < c.y + c.h; y++) {
+    let n = 0; for (let x = c.x; x < c.x + c.w; x++) if (D[(y * W + x) * 4 + 3] > 16) n++;
+    dens.push(n);
+  }
+  const quiet = Math.max(3, Math.round(c.w * 0.02));
+  const gaps = []; let s = -1;
+  for (let i = 0; i < dens.length; i++) {
+    if (dens[i] <= quiet) { if (s < 0) s = i; }
+    else if (s >= 0) { if (i - s >= 5) gaps.push([s, i]); s = -1; }
+  }
+  if (s >= 0 && dens.length - s >= 5) gaps.push([s, dens.length]);
+  let cut = -1;
+  for (const [g0, g1] of gaps) {
+    let rows = 0;
+    for (let i = g1; i < dens.length; i++) if (dens[i] > quiet) rows++;
+    if (rows >= 4) cut = g0;            // a label is several rows; a border is one
+  }
+  if (cut <= 0) return c;
+  let bx0 = 1e9, bx1 = -1, by1 = -1;
+  for (let y = c.y; y < c.y + cut; y++) for (let x = c.x; x < c.x + c.w; x++)
+    if (D[(y * W + x) * 4 + 3] > 16) { if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y > by1) by1 = y; }
+  return bx1 < 0 ? c : { x: bx0, y: c.y, w: bx1 - bx0 + 1, h: by1 - c.y + 1 };
+}
+
+function shadowAnchor(D, W, c) {
+  let sx = 0, sy = 0, sw = 0;
+  for (let y = c.y + Math.floor(c.h * 0.68); y < c.y + c.h; y++)
+    for (let x = c.x; x < c.x + c.w; x++) {
+      const a = D[(y * W + x) * 4 + 3];
+      if (a > 16 && a <= 200) { sx += x * a; sy += y * a; sw += a; }
+    }
+  return sw > 4000 ? { ax: sx / sw - c.x, ay: sy / sw - c.y } : { ax: c.w / 2, ay: c.h };
+}
+
+/** Head-to-ground height: first row carrying a broad band of near-black. */
+function figureHeight(D, W, c, ay) {
+  for (let y = c.y; y < c.y + c.h; y++) {
+    let dark = 0;
+    for (let x = c.x; x < c.x + c.w; x++) {
+      const o = (y * W + x) * 4;
+      if (D[o + 3] > 200 && D[o] < 95 && D[o + 1] < 95 && D[o + 2] < 95) dark++;
+    }
+    if (dark >= 26) return ay - (y - c.y);
+  }
+  return ay;
+}
+
+const T = CFG.TILE;
+const bw = (t) => { const d = BUILDING_DEFS[t]; return (d.w + d.h) * T * 0.5 * 1.12; };
+const SIZE = {
+  'b.towncenter': { w: bw('towncenter') }, 'b.house': { w: bw('house') }, 'b.farm': { w: bw('farm') },
+  'b.barracks': { w: bw('barracks') }, 'b.archeryrange': { w: bw('archeryrange') },
+  'b.stable': { w: bw('stable') }, 'b.blacksmith': { w: bw('blacksmith') },
+  'b.mill': { w: bw('mill') }, 'b.lumbercamp': { w: bw('lumbercamp') },
+  'b.miningcamp': { w: bw('miningcamp') }, 'b.tower': { w: bw('tower') * 1.6 },
+  'b.castle': { w: bw('castle') },
+  'r.tree': { h: 62 }, 'r.bush': { h: 30 }, 'r.stone': { h: 32 }, 'r.gold': { h: 32 },
+  'd.rocks.big': { h: 30 }, 'd.rocks.small': { h: 20 }, 'd.stump': { h: 18 },
+  'd.reeds': { h: 26 }, 'd.logs': { h: 26 }, 'd.flag': { h: 34 },
+  'd.shore': { h: 40 }, 'd.path': { h: 20 },
+};
+const FIG = { villager: 30, miner: 30, lumberjack: 30, farmer: 30,
+              spearman: 33, archer: 33, soldier: 33, knight: 40 };
+
+const SHEETS = {
+  s1: { url: 'assets/sheet-01.jpg', key: { bgMin: 214, bgLuma: 243 }, limit: 13, captions: true,
+        names: ['b.towncenter', 'b.house', 'b.farm', 'r.tree', 'r.bush', 'd.shore', 'd.rocks.big',
+                'd.rocks.small', 'r.stone', 'r.gold', 'd.logs', 'd.path', 'd.flag'] },
+  s2: { url: 'assets/sheet-02-buildings.jpg', key: {},
+        names: ['b.barracks', 'b.archeryrange', 'b.stable', 'b.blacksmith', 'b.mill',
+                'b.lumbercamp', 'b.miningcamp', 'b.tower', 'b.castle', 'd.stump', 'd.reeds'] },
+};
+for (const u of Object.keys(FIG)) {
+  SHEETS['a_' + u] = {
+    url: `assets/anim-${u}.${u === 'farmer' ? 'png' : 'jpg'}`, key: {}, expect: 8, unit: u,
+    names: [0, 1, 2, 3, 4, 5, 6, 7].map(i => `u.${u}.f${i}`),
+  };
+}
+
+document.getElementById('go').onclick = async () => {
+  const sprites = {}, sheets = {}, problems = [], canv = {};
+  for (const [id, S] of Object.entries(SHEETS)) {
+    let img;
+    try { img = await load('../' + S.url); }
+    catch (e) { problems.push('missing ' + S.url); continue; }
+    const cv = document.createElement('canvas');
+    cv.width = img.width; cv.height = img.height;
+    cv.getContext('2d').drawImage(img, 0, 0);
+    keyBackground(cv, S.key);
+    canv[id] = cv;
+
+    let { cells, data: D, W } = sliceCells(cv, 45, 20, S.expect);
+    if (S.captions) cells = cells.map(c => trimCaption(D, W, c));
+    const list = S.limit ? cells.slice(0, S.limit) : cells;
+    if (list.length !== S.names.length)
+      problems.push(`${S.url}: ${list.length} cells vs ${S.names.length} names`);
+    list.forEach(c => Object.assign(c, shadowAnchor(D, W, c)));
+    const unitK = S.unit && list[0] ? FIG[S.unit] / figureHeight(D, W, list[0], list[0].ay) : null;
+
+    list.forEach((c, i) => {
+      const name = S.names[i]; if (!name) return;
+      const sz = SIZE[name];
+      const k = unitK !== null ? unitK
+              : sz && sz.w ? sz.w / c.w
+              : sz && sz.h ? sz.h / c.h : 40 / c.w;
+      sprites[name] = { sheet: id, x: c.x, y: c.y, w: c.w, h: c.h,
+                        ax: +c.ax.toFixed(1), ay: +c.ay.toFixed(1),
+                        worldW: +(c.w * k).toFixed(2) };
+    });
+    sheets[id] = { url: S.url, key: S.key };
+  }
+
+  document.getElementById('out').value = JSON.stringify({ sheets, sprites }, null, 1);
+  if (problems.length) alert('Problems:\n' + problems.join('\n'));
+
+  // quick eyeball of everything that is not an animation frame
+  const c = document.getElementById('preview').getContext('2d');
+  c.clearRect(0, 0, 1400, 320);
+  c.fillStyle = '#7cae3e'; c.fillRect(0, 0, 1400, 320);
+  let x = 70;
+  for (const [n, s] of Object.entries(sprites)) {
+    if (n.includes('.f') && !n.endsWith('.f0')) continue;
+    const k = (s.worldW / s.w) * 2.2;
+    c.drawImage(canv[s.sheet], s.x, s.y, s.w, s.h, x - s.ax * k, 250 - s.ay * k, s.w * k, s.h * k);
+    x += 74;
+  }
+};
+</script>
+</body>
+</html>

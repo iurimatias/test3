@@ -32,12 +32,18 @@ function makeUnitIcon(type, colorIdx) {
     path: null, walkPhase: 0, anim: 0, state: 'idle',
     carry: { type: null, amount: 0 }, radius: def.radius,
   };
-  const scale = def.art === 'horse' ? 1.15 : 1.35;
-  ctx.save();
-  ctx.translate(S / 2, S - 8);
-  ctx.scale(scale, scale);
-  drawUnit(ctx, fake, PLAYER_COLORS[colorIdx]);
-  ctx.restore();
+  // prefer the real artwork, fitted to the button
+  const sprite = unitSpriteName(fake) + '.f0';
+  if (Sprites.has(sprite)) {
+    fitSprite(ctx, sprite, S, colorIdx);
+  } else {
+    const scale = def.art === 'horse' ? 1.15 : 1.35;
+    ctx.save();
+    ctx.translate(S / 2, S - 8);
+    ctx.scale(scale, scale);
+    drawUnit(ctx, fake, PLAYER_COLORS[colorIdx]);
+    ctx.restore();
+  }
   ICON_CACHE[key] = cv.toDataURL();
   return ICON_CACHE[key];
 }
@@ -60,16 +66,29 @@ function makeBuildingIcon(type, colorIdx) {
     buildProgress: 1,
   };
   // Fit the projected diamond plus whatever the structure rises to.
-  const tall = { towncenter: 118, castle: 104, tower: 86, farm: 12 }[type] || 66;
-  const wide = (pxW + pxH) * 0.5;
-  const scale = Math.min((S - 4) / wide, (S - 4) / (tall + (pxW + pxH) * 0.25));
-  ctx.save();
-  ctx.translate(S / 2, S - 5);
-  ctx.scale(scale, scale);
-  drawBuilding(ctx, fake, PLAYER_COLORS[colorIdx], 0);
-  ctx.restore();
+  if (Sprites.has('b.' + type)) {
+    fitSprite(ctx, 'b.' + type, S, colorIdx);
+  } else {
+    const tall = { towncenter: 118, castle: 104, tower: 86, farm: 12 }[type] || 66;
+    const wide = (pxW + pxH) * 0.5;
+    const scale = Math.min((S - 4) / wide, (S - 4) / (tall + (pxW + pxH) * 0.25));
+    ctx.save();
+    ctx.translate(S / 2, S - 5);
+    ctx.scale(scale, scale);
+    drawBuilding(ctx, fake, PLAYER_COLORS[colorIdx], 0);
+    ctx.restore();
+  }
   ICON_CACHE[key] = cv.toDataURL();
   return ICON_CACHE[key];
+}
+
+/** Draw an atlas sprite scaled to fill a square icon of side `S`. */
+function fitSprite(ctx, name, S, colorIdx) {
+  const sp = Sprites.atlas[name];
+  const k = Math.min((S - 4) / sp.w, (S - 4) / sp.h);
+  const w = sp.w * k, h = sp.h * k;
+  Sprites.draw(ctx, name, S / 2 + (sp.ax - sp.w / 2) * k, S - 2 - (sp.h - sp.ay) * k,
+    colorIdx, false, (k * sp.w) / sp.worldW);
 }
 
 const HOTKEY_SEQ = ['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyY'];
