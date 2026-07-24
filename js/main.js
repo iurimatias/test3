@@ -39,6 +39,7 @@
     if (G.running) return;
     // Atlas art wins where it exists; anything absent falls back to drawn art.
     await Sprites.load('assets/atlas.json');
+    UISkin.apply();
     startOverlay.classList.add('hidden');
     resize();
     UI.init();
@@ -116,7 +117,11 @@
   }
 
   resize();
-  // try the atlas early so the start-screen diorama uses it too
-  Sprites.load('assets/atlas.json').then(drawStartArt, drawStartArt);
+  // Load the atlas while the cinematic plays, so the start screen and its
+  // diorama are ready the moment the clips finish.
+  Sprites.load('assets/atlas.json').then(() => { UISkin.apply(); drawStartArt(); },
+                                          drawStartArt);
   requestAnimationFrame(frame);
+
+  Intro.play(() => startOverlay.classList.remove('hidden'));
 })();

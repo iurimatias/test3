@@ -75,6 +75,39 @@ function keyBackground(canvas, opts) {
   return canvas;
 }
 
+/**
+ * Punch out the enclosed middle of a frame. The border fences the outer flood
+ * out, so a hollow centre needs its own seed from the inside.
+ */
+function hollowCentre(canvas, r) {
+  const w = canvas.width, h = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  const seen = new Uint8Array(w * h), stack = new Int32Array(w * h);
+  let sp = 0;
+  const push = (i) => { if (!seen[i]) { seen[i] = 1; stack[sp++] = i; } };
+  push((r.y + (r.h >> 1)) * w + (r.x + (r.w >> 1)));
+
+  while (sp > 0) {
+    const i = stack[--sp], o = i * 4;
+    const rr = d[o], g = d[o + 1], b = d[o + 2];
+    const luma = rr * 0.299 + g * 0.587 + b * 0.114;
+    const mx = Math.max(rr, g, b), mn = Math.min(rr, g, b);
+    const sat = mx === 0 ? 0 : (mx - mn) / mx;
+    if (luma >= 205 && sat < 0.12) d[o + 3] = 0;
+    else if (luma >= 150 && sat < 0.14) {
+      d[o] = 0; d[o + 1] = 0; d[o + 2] = 0;
+      d[o + 3] = Math.round(clamp((250 - luma) / 250 * 1.1, 0, 0.45) * 255);
+    } else continue;
+    const x = i % w, y = (i / w) | 0;
+    if (x > r.x) push(i - 1);
+    if (x < r.x + r.w - 1) push(i + 1);
+    if (y > r.y) push(i - w);
+    if (y < r.y + r.h - 1) push(i + w);
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
 const Sprites = {
   ready: false,
   atlas: null,          // name -> {x,y,w,h,ax,ay,worldW}
@@ -102,7 +135,7 @@ const Sprites = {
     const ids = Object.keys(manifest.sheets || {});
     await Promise.all(ids.map(id => {
       const s = manifest.sheets[id];
-      return this._loadSheet(id, s.url || s, s.key || {});
+      return this._loadSheet(id, s.url || s, s.key || {}, s.hollow || []);
     }));
     this.ready = ids.length > 0;
     if (this.ready) {
@@ -111,7 +144,7 @@ const Sprites = {
     return this.ready;
   },
 
-  _loadSheet(id, url, keyOpts) {
+  _loadSheet(id, url, keyOpts, hollow) {
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
@@ -119,6 +152,10 @@ const Sprites = {
         base.width = img.width; base.height = img.height;
         base.getContext('2d').drawImage(img, 0, 0);
         keyBackground(base, keyOpts);
+        for (const name of hollow || []) {
+          const r = this.atlas[name];
+          if (r) hollowCentre(base, r);
+        }
         this.sheets[id] = { 0: base };
         // one recoloured copy per additional player livery
         for (let p = 1; p < PLAYER_COLORS.length; p++) {
@@ -165,6 +202,27 @@ const Sprites = {
   },
 
   has(name) { return !!(this.ready && this.atlas && this.atlas[name]); },
+
+  /**
+   * A single sprite as its own data URL, for use in CSS.
+   * `maxSize` caps the exported edge — HUD icons display around 20px, so
+   * exporting them at their full sheet resolution would inline megabytes of
+   * base64 for pixels nobody sees.
+   */
+  extract(name, playerIdx, maxSize) {
+    const s = this.atlas[name];
+    if (!s) return null;
+    const sheet = this.sheets[s.sheet];
+    if (!sheet) return null;
+    const k = maxSize ? Math.min(1, maxSize / Math.max(s.w, s.h)) : 1;
+    const w = Math.max(1, Math.round(s.w * k)), h = Math.max(1, Math.round(s.h * k));
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const c = cv.getContext('2d');
+    c.imageSmoothingQuality = 'high';
+    c.drawImage(sheet[playerIdx || 0], s.x, s.y, s.w, s.h, 0, 0, w, h);
+    return cv.toDataURL();
+  },
 
   /**
    * Blit `name` so its anchor lands on (ix, iy) in iso space.

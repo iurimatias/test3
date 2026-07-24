@@ -74,6 +74,7 @@ just an ordered set of plain scripts.
 | `js/utils.js` | Math, seeded RNG, cost helpers |
 | `js/iso.js` | Isometric projection, 3D box/polygon primitives, face shading |
 | `js/sprites.js` | Sprite atlas: background keying, team recolour, frame selection |
+| `js/uiskin.js` | Dresses the HUD in the UI sheet's icons and 9-slice frames |
 | `js/pathfinding.js` | Walkability grid, binary-heap A\*, throttled path queue |
 | `js/worldgen.js` | Terrain, ponds, forests, mines, starting positions |
 | `js/art.js` | Every drawing routine — terrain painting, stick figures, isometric buildings |
@@ -113,6 +114,20 @@ Team colours are generated at load: only clearly blue-dominant pixels are
 re-hued, so ink, timber and steel survive untouched and no second sheet is
 needed. Unit strips are eight poses — `0` idle, `1-4` walk, `5-6` action,
 `7` fallen — picked in `Sprites.unitFrame`.
+
+The HUD is skinned from the same pipeline. `sheet-03-ui.png` carries the
+resource and command icons plus three interface frames, and `UISkin.apply()`
+pulls each one out as a data URL and writes a stylesheet at runtime — so the CSS
+stays declarative (`.ico-wood` is still just a class) without shipping twenty
+separate icon files. Icons are exported at 64px rather than their full sheet
+resolution; at ~20px on screen the rest is invisible and inlining it cost
+several hundred kilobytes of base64 for nothing.
+
+The frames on that sheet are drawn with hollow centres so they work as CSS
+`border-image` 9-slices, stretching to fit any panel. Their middles are enclosed
+by their own border, so the outer key can't reach them — `hollowCentre` seeds a
+second flood from the inside. Without an atlas the stylesheet's own inline-SVG
+icons and flat panels stand in, so the HUD is never blank.
 
 ### How the isometric view works
 

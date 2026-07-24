@@ -65,6 +65,8 @@ body.cursor-build-hover #canvas { cursor: copy; }
 .ico-trophy{ background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 3h10v6a5 5 0 01-10 0z' fill='%23e8c34a'/%3E%3Cpath d='M7 4H4v2a4 4 0 004 4M17 4h3v2a4 4 0 01-4 4' stroke='%23e8c34a' stroke-width='1.8' fill='none'/%3E%3Crect x='10' y='14' width='4' height='4' fill='%23e8c34a'/%3E%3Crect x='7' y='18' width='10' height='3' rx='1' fill='%23e8c34a'/%3E%3C/svg%3E"); }
 .ico-gear  { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 8a4 4 0 100 8 4 4 0 000-8zm9 4l-2-1.2.4-2.3-2.2-1.3-1.8 1.5-2.2-.9L12.6 3h-2.5l-.6 2.3-2.2.9-1.8-1.5L3.3 6l.4 2.3L1.7 12l2 1.2-.4 2.3 2.2 1.3 1.8-1.5 2.2.9.6 2.3h2.5l.6-2.3 2.2-.9 1.8 1.5 2.2-1.3-.4-2.3z' fill='%23efe3c6'/%3E%3C/svg%3E"); }
 .ico-globe { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='%23efe3c6' stroke-width='1.9'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cellipse cx='12' cy='12' rx='4' ry='9'/%3E%3Cpath d='M3 12h18M4.5 7h15M4.5 17h15'/%3E%3C/g%3E%3C/svg%3E"); }
+.ico-map    { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z' fill='%23e0cfa2' stroke='%238d6c26' stroke-width='1.4' stroke-linejoin='round'/%3E%3Cpath d='M9 4v14M15 6v14' stroke='%238d6c26' stroke-width='1.2'/%3E%3C/svg%3E"); }
+.ico-help   { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ctext x='12' y='19' text-anchor='middle' font-size='19' font-weight='bold' fill='%23efe3c6' font-family='sans-serif'%3E?%3C/text%3E%3C/svg%3E"); }
 .ico-crown { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 8l3.5 4L12 5l5.5 7L21 8v10H3z' fill='%23e8c34a'/%3E%3Ccircle cx='3' cy='7' r='1.8' fill='%23f0d78d'/%3E%3Ccircle cx='21' cy='7' r='1.8' fill='%23f0d78d'/%3E%3Ccircle cx='12' cy='4' r='2' fill='%23f0d78d'/%3E%3C/svg%3E"); }
 
 /* ----------------------------------------------------------------- topbar */
@@ -180,6 +182,12 @@ body.cursor-build-hover #canvas { cursor: copy; }
   z-index: 8;
   box-shadow: 0 4px 14px rgba(0, 0, 0, .45);
 }
+#objectives { position: absolute; }
+#objectives .obj-icon {
+  position: absolute; top: -12px; left: -10px;
+  width: 30px; height: 30px; transform: rotate(-8deg);
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,.5));
+}
 #objectives ul { list-style: none; }
 #objectives li {
   position: relative;
@@ -283,6 +291,12 @@ body.cursor-build-hover #canvas { cursor: copy; }
 .cmd:active { transform: translateY(0); }
 .cmd img { width: 42px; height: 42px; image-rendering: auto; }
 .cmd .emoji { font-size: 22px; }
+/* command glyphs swapped for sheet art by UISkin; sized to match unit icons */
+.cmd .emoji.cmd-build, .cmd .emoji.cmd-stop, .cmd .emoji.cmd-cancel,
+.cmd .emoji.cmd-attack, .cmd .emoji.ico-crown, .cmd .emoji.ico-gear {
+  width: 38px; height: 38px; font-size: 0;
+  background-repeat: no-repeat; background-position: center; background-size: contain;
+}
 .cmd .lbl { display: none; }
 .cmd .cost {
   position: absolute;
@@ -540,10 +554,18 @@ body.cursor-build-hover #canvas { cursor: copy; }
 .fine { margin-top: 14px; font-size: 11.5px; color: #9a8d6f; }
 
 @media (max-width: 1280px) {
-  .res { min-width: 66px; font-size: 14px; padding: 4px 8px 4px 6px; }
+  .res { min-width: 64px; font-size: 14px; padding: 4px 8px 4px 6px; }
   .ico { width: 17px; height: 17px; }
-  #age-banner { font-size: 18px; min-width: 200px; padding: 0 20px 8px; }
+  /* the plaque art is wider than the old flat banner, so it has to give way
+     sooner or it rides over the resource counters */
+  #age-banner { font-size: 17px; min-width: 210px; padding: 0 28px 12px; }
+  body.skinned #age-banner { min-width: 236px; padding: 0 30px 14px; }
   .tool { width: 36px; height: 36px; }
+}
+@media (max-width: 1120px) {
+  #age-banner { font-size: 15px; min-width: 180px; padding: 0 22px 10px; }
+  body.skinned #age-banner { min-width: 196px; padding: 0 24px 12px; }
+  .res { min-width: 56px; font-size: 13px; padding: 3px 6px 3px 4px; }
 }
 @media (max-width: 1080px) {
   :root { --bottom-h: 172px; }
@@ -563,4 +585,70 @@ body.cursor-build-hover #canvas { cursor: copy; }
 }
 @media (max-width: 860px) {
   #age-banner { display: none; }
+}
+
+
+/* ---------------------------------------------------- skinned (atlas) HUD */
+/* UISkin swaps the panel fills for 9-sliced frame art, so drop the flat
+   gradients and let the artwork carry the edges. */
+body.skinned .frame {
+  background:
+    linear-gradient(180deg, rgba(52, 40, 25, .92), rgba(26, 20, 12, .95));
+  padding: 10px;
+}
+body.skinned .cmd { padding: 0; }
+body.skinned .cmd:hover { box-shadow: 0 0 0 2px var(--brass-hi); }
+body.skinned .cmd .cost { background: rgba(0, 0, 0, .68); }
+body.skinned .qitem { display: grid; place-items: center; }
+body.skinned #sel-icon img { background: none; }
+body.skinned .round { color: transparent; }
+body.skinned .round .ico { width: 22px; height: 22px; }
+body.skinned #age-banner { color: var(--brass-hi); }
+
+
+/* --------------------------------------------------------------- cinematic */
+
+#intro {
+  position: fixed; inset: 0;
+  background: #000;
+  z-index: 50;
+  display: grid; place-items: center;
+  transition: opacity .4s ease;
+}
+#intro.fading { opacity: 0; pointer-events: none; }
+#intro-video {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+#intro-controls {
+  position: absolute;
+  right: 22px; bottom: 20px;
+  display: flex; align-items: center; gap: 10px;
+}
+#intro-controls button {
+  background: rgba(20, 16, 10, .6);
+  border: 2px solid rgba(200, 164, 74, .55);
+  color: var(--parch);
+  border-radius: 8px;
+  padding: 9px 16px;
+  font: 600 14px/1 inherit;
+  letter-spacing: .4px;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+  transition: border-color .12s, background .12s;
+}
+#intro-controls button:hover {
+  border-color: var(--brass-hi);
+  background: rgba(40, 32, 18, .8);
+}
+#intro-sound { min-width: 46px; font-size: 16px; }
+/* if autoplay-with-sound was blocked, draw the eye to the unmute button */
+#intro-sound.nudge {
+  border-color: var(--brass-hi);
+  animation: introNudge 1.6s ease-in-out infinite;
+}
+@keyframes introNudge {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(240, 215, 141, 0); }
+  50%      { box-shadow: 0 0 0 5px rgba(240, 215, 141, .28); }
 }

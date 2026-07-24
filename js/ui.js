@@ -358,18 +358,18 @@ const UI = {
       const workers = units.filter(u => u.isWorker);
       if (workers.length) {
         this.addButton({
-          id: 'build', label: 'Build', emoji: '🔨',
+          id: 'build', label: 'Build', emoji: '🔨', iconClass: 'cmd-build',
           tooltip: 'Open the build menu  [B]',
           onClick: () => this.toggleBuildMenu(),
         });
       }
       this.addButton({
-        id: 'stop', label: 'Stop', emoji: '✋', hotkeyOverride: 'S',
+        id: 'stop', label: 'Stop', emoji: '✋', iconClass: 'cmd-stop', hotkeyOverride: 'S',
         tooltip: 'Stop what you are doing  [S]',
         onClick: () => { for (const u of units) u.stop(); },
       });
       this.addButton({
-        id: 'amove', label: 'Attack', emoji: '⚔', hotkeyOverride: 'A',
+        id: 'amove', label: 'Attack', emoji: '⚔', iconClass: 'cmd-attack', hotkeyOverride: 'A',
         tooltip: 'Attack-move to a point  [A]',
         onClick: () => {
           Input.attackMoveMode = true;
@@ -384,7 +384,7 @@ const UI = {
     if (!b) return;
     if (!b.built) {
       this.addButton({
-        id: 'cancelb', label: 'Cancel', emoji: '✖',
+        id: 'cancelb', label: 'Cancel', emoji: '✖', iconClass: 'cmd-cancel',
         tooltip: 'Cancel construction and refund',
         onClick: () => {
           refundCost(p.resources, b.def.cost);
@@ -419,7 +419,7 @@ const UI = {
         if ((rd.age || 0) > p.age) continue;
         if (p.research[key]) continue;
         this.addButton({
-          id: 'res:' + key, label: rd.name, emoji: '⚒', cost: rd.cost,
+          id: 'res:' + key, label: rd.name, emoji: '⚒', iconClass: 'ico-gear', cost: rd.cost,
           tooltip: `${rd.name}\n${rd.desc}\n${costString(rd.cost)}`,
           check: () => !p.researching[key],
           onClick: () => { b.enqueueResearch(key); this._qSig = null; },
@@ -431,7 +431,7 @@ const UI = {
         const rd = RESEARCH_DEFS[key];
         if ((rd.age || 0) > p.age || p.research[key]) continue;
         this.addButton({
-          id: 'res:' + key, label: rd.name, emoji: '⚒', cost: rd.cost,
+          id: 'res:' + key, label: rd.name, emoji: '⚒', iconClass: 'ico-gear', cost: rd.cost,
           tooltip: `${rd.name}\n${rd.desc}\n${costString(rd.cost)}`,
           check: () => !p.researching[key],
           onClick: () => { b.enqueueResearch(key); this._qSig = null; },
@@ -443,7 +443,7 @@ const UI = {
     if (b.def.canAge && p.age < AGES.length - 1) {
       const next = AGES[p.age + 1];
       this.addButton({
-        id: 'age', label: next.name, emoji: '⏫', cost: next.cost,
+        id: 'age', label: next.name, emoji: '⏫', iconClass: 'ico-crown', cost: next.cost,
         tooltip: `Advance to the ${next.name}\nRequires ${next.needBuildings} buildings of the current age\n${costString(next.cost)}`,
         check: () => p.countBuildingsOfAge(p.age) >= (next.needBuildings || 0),
         onClick: () => { b.enqueueAge(); this._qSig = null; },
@@ -468,7 +468,7 @@ const UI = {
       });
     }
     this.addButton({
-      id: 'back', label: 'Back', emoji: '✕', cls: 'cancel',
+      id: 'back', label: 'Back', emoji: '✕', iconClass: 'cmd-cancel', cls: 'cancel',
       tooltip: 'Back to commands  [Esc]',
       onClick: () => this.closeBuildMenu(),
     });
@@ -483,8 +483,8 @@ const UI = {
     else if (spec.buildingIcon) el.appendChild(iconEl(makeBuildingIcon(spec.buildingIcon, G.humanId)));
     else {
       const s = document.createElement('span');
-      s.className = 'emoji';
-      s.textContent = spec.emoji || '?';
+      s.className = 'emoji' + (spec.iconClass ? ' ' + spec.iconClass : '');
+      if (!spec.iconClass) s.textContent = spec.emoji || '?';
       el.appendChild(s);
     }
 
